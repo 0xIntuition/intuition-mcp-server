@@ -6,13 +6,13 @@ RUN npm install -g pnpm
 WORKDIR /intuition-mcp-server
 
 # Copy package files first for better layer caching
-COPY intuition-mcp-server/package*.json intuition-mcp-server/pnpm-lock.yaml ./
+COPY package*.json pnpm-lock.yaml ./
 
 # Install dependencies
 RUN pnpm install
 
 # Copy the rest of the application
-COPY intuition-mcp-server/ .
+COPY . .
 
 # Build the application
 RUN pnpm run build

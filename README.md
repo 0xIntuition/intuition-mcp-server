@@ -11,13 +11,13 @@ This repository represents the evolution of our Intuition MCP Server, which we a
   - [Get Started](#get-started)
   - [Overview](#overview)
   - [Tools](#tools)
-    - [extract\_triples](#extract_triples)
-    - [search\_atoms](#search_atoms)
-    - [get\_account\_info](#get_account_info)
-    - [search\_lists](#search_lists)
-    - [get\_following](#get_following)
-    - [get\_followers](#get_followers)
-    - [search\_account\_ids](#search_account_ids)
+    - [extract_triples](#extract_triples)
+    - [search_atoms](#search_atoms)
+    - [get_account_info](#get_account_info)
+    - [search_lists](#search_lists)
+    - [get_following](#get_following)
+    - [get_followers](#get_followers)
+    - [search_account_ids](#search_account_ids)
   - [Running a Client](#running-a-client)
     - [Prerequisites](#prerequisites)
   - [Installation](#installation)
@@ -401,7 +401,9 @@ await client.callTool('get_account_info', {
 
 ## Deployment
 
-This repository contains a sample `Dockerfile` that you can use to deploy to services such as [Render](https://render.com/) or any other host provider that supports Docker. To deploy to Render, you would need to create an additioanl `render.yaml` but you can still utilize the provided `Dockerfile`.
+This repository contains a sample `Dockerfile` that you can use to deploy to services such as [Render](https://render.com/) or any other host provider that supports Docker. The `Dockerfile` is already configured to work for deploying the project structure as is. If you make any changes to the repo structure after cloning you'll want to be sure to update this file.
+
+We've included a `render.yaml` file for the public deployment. We invite you to create your own deployment. You can utilize our existing `render.yaml` file to deploy your own Render project.
 
 ## Contributing
 

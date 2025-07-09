@@ -4,7 +4,7 @@ const graphqlUrl =
   process.env.INTUITION_GRAPHQL_URL ||
   'https://prod.base.intuition-api.com/v1/graphql';
 
-const TIMEOUT_MS = 10000; // 10 seconds
+const TIMEOUT_MS = 100000; // 100 seconds
 const CACHE_TTL = 60000; // Cache for 1 minute
 
 // Simple in-memory cache

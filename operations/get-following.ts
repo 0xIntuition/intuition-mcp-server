@@ -7,11 +7,11 @@ import { removeEmptyFields } from "../lib/response.js";
 
 // Define the parameters schema
 const parameters = z.object({
-  account_id: z
+  address: z
     .string()
     .min(1)
     .describe(
-      "The account id of the account to find the following for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b",
+      "The address of the account to find the following for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b",
     ),
   predicate: z
     .string()
@@ -228,17 +228,17 @@ export const getFollowingOperation: GetFollowingOperation = {
 ## Example:
 
 - user: what do the account I follow follow?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
+  tool_args: {"address":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
 
 - user: what do the account I follow recommend?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"recommend"}
+  tool_args: {"address":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"recommend"}
 `,
   parameters,
   async execute(args) {
     try {
       console.log("\n=== Calling GraphQL Search ===");
 
-      const address = args.account_id;
+      const address = args.address;
 
       const result = (await client.request(getFollowingQuery, {
         where: {

@@ -7,9 +7,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   CallToolRequest,
+  CallToolResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { performance } from 'perf_hooks';
 import { randomUUID } from 'node:crypto';
+
 import * as triples from './operations/triples.js';
 import { atomSearchOperation } from './operations/search-atoms.js';
 import { getAccountInfoOperation } from './operations/get-account-info.js';
@@ -17,9 +20,8 @@ import { searchListsOperation } from './operations/search-lists.js';
 import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-
-import { getOutgoingEdgesOperation } from "./operations/get-outgoing-edges.js";
+import { getOutgoingEdgesOperation } from './operations/get-outgoing-edges.js';
+import { getIncomingEdgesOperation as getInboundRelationsOperation } from './operations/get-inbound-relations.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {
@@ -73,35 +75,105 @@ const TOOLS = [
     inputSchema: zodToJsonSchema(getFollowersOperation.parameters),
   },
   {
-    name: "get_outgoing_edges",
-    description: getOutgoingEdgesOperation.description,
-    inputSchema: zodToJsonSchema(getOutgoingEdgesOperation.parameters),
-  },
-  {
     name: 'search_account_ids',
     description: searchAccountIdsOperation.description,
     inputSchema: zodToJsonSchema(searchAccountIdsOperation.parameters),
   },
+  {
+    name: 'get_outgoing_edges',
+    description: getOutgoingEdgesOperation.description,
+    inputSchema: zodToJsonSchema(getOutgoingEdgesOperation.parameters),
+  },
+  {
+    name: 'get_inbound_relations',
+    description: getInboundRelationsOperation.description,
+    inputSchema: zodToJsonSchema(getInboundRelationsOperation.parameters),
+  },
 ] as const;
 
-// Store transports for each session type
-const transports = {
-  streamable: {} as Record<string, StreamableHTTPServerTransport>,
-  sse: {} as Record<string, SSEServerTransport>,
-};
+// Simple session tracking (your original approach)
+interface Transport {
+  transport: StreamableHTTPServerTransport;
+  lastActivity: number;
+  createdAt: number;
+}
 
-// Create server instance with configuration
-const SERVER_CONFIG = {
-  name: 'intuition-mcp-server',
-  version: '0.1.0',
-} as const;
+// Transport configuration (your original settings)
+const TRANSPORT_TIMEOUT = 30000; // 30 seconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000; // Start with 1 second
+const MAX_RETRY_DELAY_MS = 5000; // Cap at 5 seconds
 
-// Request tracing middleware
+// Session configuration (your original settings)
+const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const SESSION_CLEANUP_INTERVAL = 60 * 1000; // 1 minute
+const SESSION_MAX_AGE = 30 * 60 * 1000; // 30 minutes
+
+const transports: Record<string, Transport> = {};
+
+// Cleanup stale sessions periodically (your original logic)
+setInterval(() => {
+  const now = Date.now();
+  Object.entries(transports).forEach(async ([sessionId, session]) => {
+    const isInactive = now - session.lastActivity > SESSION_TIMEOUT;
+    const isExpired = now - session.createdAt > SESSION_MAX_AGE;
+
+    if (isInactive || isExpired) {
+      debug(
+        `Cleaning up ${
+          isInactive ? 'inactive' : 'expired'
+        } session: ${sessionId}`
+      );
+      try {
+        await session.transport.close();
+      } catch (error) {
+        debug('Error closing transport:', error);
+      } finally {
+        delete transports[sessionId];
+      }
+    }
+  });
+}, SESSION_CLEANUP_INTERVAL);
+
+// Helper function to handle transport errors (your original logic)
+async function handleTransportError(
+  transport: StreamableHTTPServerTransport,
+  error: any
+): Promise<void> {
+  debug('Transport error:', error);
+
+  let retryCount = 0;
+  while (retryCount < MAX_RETRIES) {
+    try {
+      debug(
+        `Attempting to reconnect (attempt ${retryCount + 1}/${MAX_RETRIES})...`
+      );
+      await server.connect(transport);
+      debug('Successfully reconnected transport');
+      return;
+    } catch (retryError) {
+      debug(`Reconnection attempt ${retryCount + 1} failed:`, retryError);
+      retryCount++;
+
+      if (retryCount < MAX_RETRIES) {
+        const delay = Math.min(
+          RETRY_DELAY_MS * Math.pow(2, retryCount),
+          MAX_RETRY_DELAY_MS
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw new Error('Failed to reconnect transport after maximum retry attempts');
+}
+
+// Request tracing middleware (your original approach)
 const tracingMiddleware = (req: Request, res: Response, next: Function) => {
   const requestId = randomUUID();
   const cfRay = req.headers['cf-ray'] as string;
 
-  // Add Render tracing headers (or for any other host provider)
+  // Add Render tracing headers
   res.setHeader('Rndr-Id', requestId);
 
   // Attach to request for logging
@@ -117,6 +189,12 @@ const tracingMiddleware = (req: Request, res: Response, next: Function) => {
   next();
 };
 
+// Create server instance with configuration
+const SERVER_CONFIG = {
+  name: 'intuition-mcp-server',
+  version: '0.7.0',
+} as const;
+
 const server = new Server(SERVER_CONFIG, {
   capabilities: {
     tools: {
@@ -127,105 +205,137 @@ const server = new Server(SERVER_CONFIG, {
       get_following: true,
       get_followers: true,
       search_account_ids: true,
+      get_outgoing_edges: true,
+      get_inbound_relations: true,
     },
   },
 });
 
 // Set up request handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  debug('Number of tools registered:', TOOLS.length);
-  TOOLS.forEach((tool) => {
-    debug(`- ${tool.name}: ${tool.description}`);
-  });
-
-  return { tools: TOOLS };
+  return {
+    tools: TOOLS.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+  };
 });
 
 server.setRequestHandler(
   CallToolRequestSchema,
   async (request: CallToolRequest) => {
-    debug('Tool Call Request:', request.params.name);
-    debug('Arguments:', JSON.stringify(request.params.arguments, null, 2));
+    const startTime = performance.now();
+    console.log(
+      `[Tool Call Start] Tool: ${request.params.name} Args:`,
+      JSON.stringify(request.params.arguments, null, 2)
+    );
 
     try {
-      if (!request.params.arguments) {
-        throw new Error('Arguments are required');
-      }
+      let result: CallToolResult;
 
       switch (request.params.name) {
         case 'extract_triples': {
           const args = triples.ExtractTriplesSchema.parse(
             request.params.arguments
           );
-          const result = await triples.extractTriples(args.input);
-          return {
-            _meta: {},
-            content: [
-              {
-                type: 'text' as const,
-                text: 'Extracted triples',
-                data: result,
-              },
-            ],
-          };
+          result = await triples.extractTriples(args.input);
+          break;
         }
         case 'search_atoms': {
           const args = atomSearchOperation.parameters.parse(
             request.params.arguments
           );
-          return await atomSearchOperation.execute(args);
+          result = await atomSearchOperation.execute(args);
+          break;
         }
         case 'get_account_info': {
           const args = getAccountInfoOperation.parameters.parse(
             request.params.arguments
           );
-          return await getAccountInfoOperation.execute(args);
+          result = await getAccountInfoOperation.execute(args);
+          break;
         }
         case 'search_lists': {
           const args = searchListsOperation.parameters.parse(
             request.params.arguments
           );
-          return await searchListsOperation.execute(args);
+          result = await searchListsOperation.execute(args);
+          break;
         }
         case 'get_following': {
           const args = getFollowingOperation.parameters.parse(
             request.params.arguments
           );
-          return await getFollowingOperation.execute(args);
+          result = await getFollowingOperation.execute(args);
+          break;
         }
         case 'get_followers': {
           const args = getFollowersOperation.parameters.parse(
             request.params.arguments
           );
-          return await getFollowersOperation.execute(args);
+          result = await getFollowersOperation.execute(args);
+          break;
         }
         case 'search_account_ids': {
           const args = searchAccountIdsOperation.parameters.parse(
             request.params.arguments
           );
-          return await searchAccountIdsOperation.execute(args);
+          result = await searchAccountIdsOperation.execute(args);
+          break;
         }
-        case "get_outgoing_edges": {
+        case 'get_outgoing_edges': {
           const args = getOutgoingEdgesOperation.parameters.parse(
-            request.params.arguments,
+            request.params.arguments
           );
-          return await getOutgoingEdgesOperation.execute(args);
+          result = await getOutgoingEdgesOperation.execute(args);
+          break;
+        }
+        case 'get_inbound_relations': {
+          const args = getInboundRelationsOperation.parameters.parse(
+            request.params.arguments
+          );
+          result = await getInboundRelationsOperation.execute(args);
+          break;
         }
         default:
           throw new Error(`Unknown tool: ${request.params.name}`);
       }
+
+      const duration = performance.now() - startTime;
+      console.log(
+        `[Tool Call Success] Tool: ${
+          request.params.name
+        } Duration: ${duration.toFixed(2)}ms`
+      );
+
+      // CRITICAL FIX: Return the actual tool result, not a wrapper
+      // The individual operations already return properly formatted CallToolResult
+      return result;
     } catch (error) {
-      debug('Tool Call Error:', error);
+      const duration = performance.now() - startTime;
+      console.error(
+        `[Tool Call Error] Tool: ${
+          request.params.name
+        } Duration: ${duration.toFixed(2)}ms`
+      );
+      console.error('Error details:', error);
+      console.error(
+        'Error stack:',
+        error instanceof Error ? error.stack : 'No stack trace'
+      );
+
+      // Return a properly formatted error response
       return {
-        _meta: {},
         content: [
           {
             type: 'text' as const,
-            text: `Error: ${
+            text: `Error executing ${request.params.name}: ${
               error instanceof Error ? error.message : String(error)
             }`,
           },
         ],
+        isError: true,
       };
     }
   }
@@ -240,8 +350,17 @@ async function runStdioServer() {
 
 async function runHttpServer() {
   const app = express();
-  const port = process.env.PORT || 3001;
+  const port = parseInt(process.env.PORT || '3001', 10);
   app.use(express.json());
+
+  // RENDER REQUIREMENT: Trust proxy for Render's load balancer
+  app.set('trust proxy', true);
+
+  // Basic request logging
+  app.use((req: Request, res: Response, next) => {
+    debug(`${req.method} ${req.path}`);
+    next();
+  });
 
   // Health check endpoint
   app.get('/health', (_req: Request, res: Response) => {
@@ -249,28 +368,126 @@ async function runHttpServer() {
       status: 'ok',
       version: SERVER_CONFIG.version,
       name: SERVER_CONFIG.name,
+      activeSessions: Object.keys(transports).length,
+      uptime: process.uptime(),
     });
   });
 
-  // Modern Streamable HTTP endpoint
-  app.all('/mcp', async (req, res) => {
+  // Debug endpoint to test tool execution
+  app.post('/debug/test-tools', async (_req: Request, res: Response) => {
+    try {
+      console.log('[Debug] Testing tool execution...');
+
+      // Test search_atoms
+      const testResult = await atomSearchOperation.execute({
+        queries: ['ethereum'],
+      });
+
+      console.log('[Debug] Tool test successful:', {
+        hasContent: !!testResult.content,
+        contentLength: testResult.content?.length,
+        contentTypes: testResult.content?.map((c) => c.type),
+      });
+
+      res.json({
+        status: 'success',
+        toolTest: {
+          result: testResult,
+          hasContent: !!testResult.content,
+          contentLength: testResult.content?.length,
+        },
+      });
+    } catch (error) {
+      console.error('[Debug] Tool test failed:', error);
+      res.status(500).json({
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    }
+  });
+
+  // MCP endpoint (following official SDK documentation pattern)
+  app.post('/mcp', tracingMiddleware, async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    const { requestId, cfRay } = (req as any).tracingInfo;
 
     try {
+      // Enhanced request logging
+      console.log(
+        `[MCP Request]`,
+        `Method: ${req.method}`,
+        `Session: ${sessionId}`,
+        `CF-Ray: ${cfRay}`,
+        `Client IP: ${req.ip}`,
+        `User-Agent: ${req.headers['user-agent']}`,
+        `Origin: ${req.headers.origin || 'N/A'}`
+      );
+
       if (!sessionId) {
+        console.log('[New Session Request] Initializing new session');
+        // New initialization request
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (sessionId) => {
+            console.log(
+              `[Session Init] ID: ${sessionId} RequestID: ${requestId} CF-Ray: ${cfRay}`
+            );
+            transports[sessionId] = {
+              transport,
+              lastActivity: Date.now(),
+              createdAt: Date.now(),
+            };
+          },
         });
-        if (transport.sessionId) {
-          transports.streamable[transport.sessionId] = transport;
+
+        try {
           await server.connect(transport);
           await transport.handleRequest(req, res, req.body);
+        } catch (error) {
+          console.error(
+            '[Session Init Error] Failed to initialize transport:',
+            {
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+              requestId,
+              cfRay,
+              body: req.body,
+            }
+          );
+
+          // Clean up the transport on initialization failure
+          try {
+            await transport.close();
+          } catch (closeError) {
+            console.error(
+              '[Session Init Error] Error closing failed transport:',
+              closeError
+            );
+          }
+
+          if (!res.writableEnded) {
+            res.status(500).json({
+              jsonrpc: '2.0',
+              error: {
+                code: -32001,
+                message: 'Failed to initialize MCP connection',
+                data: {
+                  details:
+                    error instanceof Error ? error.message : 'Unknown error',
+                  requestId,
+                },
+              },
+              id: null,
+            });
+          }
         }
         return;
       }
 
-      const transport = transports.streamable[sessionId];
-      if (!transport) {
+      // Existing session
+      const session = transports[sessionId];
+      if (!session) {
         res.status(401).json({
           jsonrpc: '2.0',
           error: {
@@ -282,56 +499,139 @@ async function runHttpServer() {
         return;
       }
 
-      await transport.handleRequest(req, res, req.body);
+      console.log(
+        `[Existing Session] ID: ${sessionId} Age: ${
+          Date.now() - (transports[sessionId]?.createdAt || Date.now())
+        }ms`
+      );
+
+      // Update session activity
+      session.lastActivity = Date.now();
+
+      try {
+        await session.transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error('[Transport Error] Critical transport failure:', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          sessionId,
+          requestId,
+          cfRay,
+          body: req.body,
+        });
+
+        // Check if the error indicates a broken connection
+        const shouldReconnect =
+          error instanceof Error &&
+          (error.message.includes('connection') ||
+            error.message.includes('network') ||
+            error.message.includes('socket') ||
+            error.message.includes('transport'));
+
+        if (shouldReconnect) {
+          console.log(
+            '[Transport Recovery] Attempting to reconnect transport...'
+          );
+          try {
+            await handleTransportError(session.transport, error);
+            console.log(
+              '[Transport Recovery] Successfully recovered transport'
+            );
+          } catch (recoveryError) {
+            console.error(
+              '[Transport Recovery] Failed to recover transport:',
+              recoveryError
+            );
+            delete transports[sessionId]; // Remove failed session
+          }
+        }
+
+        if (!res.writableEnded) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32000,
+              message: 'Transport error',
+              data: {
+                details:
+                  error instanceof Error ? error.message : 'Unknown error',
+                requestId,
+                sessionId,
+              },
+            },
+            id: null,
+          });
+        }
+      }
     } catch (error) {
-      console.error('[Error]', error);
+      console.error('[MCP Request Error] Unhandled error in MCP endpoint:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        sessionId,
+        requestId,
+        cfRay,
+        body: req.body,
+        headers: req.headers,
+      });
+
       if (!res.writableEnded) {
         res.status(500).json({
-          error: 'Failed to handle connection',
-          details: error instanceof Error ? error.message : 'Unknown error',
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
+            message: 'Internal server error',
+            data: {
+              details: error instanceof Error ? error.message : 'Unknown error',
+              requestId,
+              sessionId,
+            },
+          },
+          id: null,
         });
       }
     }
   });
 
-  // Legacy SSE endpoint for older clients
-  app.get('/sse', async (req, res) => {
-    const transport = new SSEServerTransport('/messages', res);
-    transports.sse[transport.sessionId] = transport;
-
-    res.on('close', () => {
-      delete transports.sse[transport.sessionId];
-    });
-
-    await server.connect(transport);
-  });
-
-  // Legacy message endpoint for older clients
-  app.post('/messages', async (req, res) => {
-    const sessionId = req.query.sessionId as string;
-    const transport = transports.sse[sessionId];
-    if (transport) {
-      await transport.handlePostMessage(req, res, req.body);
-    } else {
-      res.status(400).send('No transport found for sessionId');
+  // Handle session cleanup on DELETE
+  app.delete('/mcp', async (req: Request, res: Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string;
+    if (sessionId && transports[sessionId]) {
+      const transport = transports[sessionId];
+      try {
+        await transport.transport.close();
+      } finally {
+        delete transports[sessionId];
+      }
     }
+    res.status(200).send('Session terminated');
   });
 
-  const httpServer = app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+  // Error handling middleware
+  app.use((err: Error, req: Request, res: Response, next: Function) => {
+    debug('Server error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   });
+
+  // RENDER REQUIREMENT: Bind to 0.0.0.0 for Render compatibility
+  const httpServer = app.listen(port, '0.0.0.0', () => {
+    debug(`HTTP server listening on 0.0.0.0:${port} (Render-compatible)`);
+  });
+
+  // RENDER OPTIMIZATION: Timeout configurations for Render
+  httpServer.keepAliveTimeout = 120000; // 120 seconds
+  httpServer.headersTimeout = 120000; // 120 seconds
 
   // Graceful shutdown
   process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
+    debug('SIGTERM received, shutting down gracefully');
     httpServer.close(() => {
-      console.log('Server closed');
+      debug('Server closed');
       process.exit(0);
     });
 
     // Force close after 10s
     setTimeout(() => {
-      console.log('Forcing server shutdown');
+      debug('Forcing server shutdown');
       process.exit(1);
     }, 10000);
   });

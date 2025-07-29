@@ -21,7 +21,7 @@ import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
 import { getOutgoingEdgesOperation } from './operations/get-outgoing-edges.js';
-import { getIncomingEdgesOperation as getInboundRelationsOperation } from './operations/get-inbound-relations.js';
+import { getInboundRelationsOperation } from './operations/get-inbound-relations.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {

@@ -1,3 +1,6 @@
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+
 export function removeEmptyFields(obj: any): any {
   // Handle null or undefined input
   if (obj === null || obj === undefined) {
@@ -42,4 +45,28 @@ export function removeEmptyFields(obj: any): any {
 
   // Return primitive values as-is
   return obj;
+}
+
+export function createErrorResponse(
+  error: unknown,
+  context?: Record<string, any>
+): CallToolResult {
+  console.error('Error in operation:', error);
+  if (context) {
+    console.error('Error context:', context);
+  }
+
+  const errorMessage =
+    error instanceof Error ? error.message : String(error);
+  const errorStack = error instanceof Error ? error.stack : undefined;
+
+  return {
+    content: [
+      {
+        type: 'text',
+        text: `Error: ${errorMessage}`,
+      },
+    ],
+    isError: true,
+  };
 }

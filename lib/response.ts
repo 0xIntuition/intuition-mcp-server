@@ -56,9 +56,23 @@ export function createErrorResponse(
     console.error('Error context:', context);
   }
 
-  const errorMessage =
-    error instanceof Error ? error.message : String(error);
-  const errorStack = error instanceof Error ? error.stack : undefined;
+  let errorMessage = error instanceof Error ? error.message : String(error);
+  
+  // Check for rate limit error
+  if (error && typeof error === 'object' && 'response' in error) {
+    const response = (error as any).response;
+    if (response?.status === 429) {
+      const retryAfter = response.headers?.['retry-after'] || response.headers?.['ratelimit-reset'] || '60';
+      const remaining = response.headers?.['x-ratelimit-remaining-minute'] || response.headers?.['ratelimit-remaining'] || '0';
+      
+      errorMessage = `API rate limit exceeded. Please wait ${retryAfter} seconds before trying again. (${remaining} requests remaining)`;
+      
+      // Add user-friendly explanation
+      if (context?.operation === 'get_following' || context?.operation === 'get_followers') {
+        errorMessage += '\n\nNote: This operation analyzes many accounts at once. The system is limited to top 20 accounts to prevent rate limits.';
+      }
+    }
+  }
 
   return {
     content: [

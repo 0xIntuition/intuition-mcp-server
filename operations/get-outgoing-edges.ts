@@ -1,9 +1,13 @@
-import { z } from "zod";
-import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { client } from "../graphql/client.js";
-import { SearchAtomsQuery } from "../graphql/generated/graphql.js";
-import { gql } from "graphql-request";
-import { removeEmptyFields } from "../lib/response.js";
+import { z } from 'zod';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { client } from '../graphql/client.js';
+import { SearchAtomsQuery } from '../graphql/generated/graphql.js';
+import { gql } from 'graphql-request';
+import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
+import { 
+  processPositionWithOpposition, 
+  filterZeroSharePositions
+} from '../lib/position-utils.js';
 
 // Define the parameters schema
 const parameters = z.object({
@@ -11,20 +15,20 @@ const parameters = z.object({
     .string()
     .min(1)
     .describe(
-      "The account id of the account to find the outgoing edges for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b",
+      'The account id of the account to find the outgoing edges for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b'
     ),
   edges_predicate: z
     .string()
     .min(1)
     .describe(
-      "The predicate to filter on for outgoing edges. Example: follow, like, dislike, recommend, trust",
+      'The predicate to filter on for outgoing edges. Example: follow, like, dislike, recommend, trust'
     ),
   edges_edges_predicate: z
     .string()
     .min(1)
     .describe(
-      `Optional predicate to filter edges' edges on.
-Example: recommend, follow, like, dislike, trust`,
+      `Optional predicate to filter nested edges on.
+Example: recommend, follow, like, dislike, trust`
     )
     .optional(),
 });
@@ -36,281 +40,312 @@ interface GetOutgoingEdgesOperation {
   execute: (args: z.infer<typeof parameters>) => Promise<CallToolResult>;
 }
 
-// Base value types that can be null
-interface ThingValue {
-  url: string;
-  description: string;
-  name: string;
-}
-
-interface AccountValue {
-  id: string;
-  label: string;
-}
-
-// Value interface that contains possible entity types
-interface Value {
-  thing: ThingValue | null;
-  account: AccountValue | null;
-  person: null; // Always null in the example
-  organization: null; // Always null in the example
-}
-
-// Subject interface
-interface Subject {
-  id?: string;
-  label: string;
-  type?: string; // Optional since it's only present in nested claims
-  value?: Value; // Optional since it's only present in nested claims
-}
-
-// Predicate interface
-interface Predicate {
-  label: string;
-}
-
-// Object interface
-interface Object {
-  id?: string; // Optional since it's only in top-level object
-  label: string;
-  type?: string; // Optional since it's only in nested claims
-  value?: Value; // Optional since it's only in nested claims
-  accounts?: Account[]; // Optional since it's only in top-level object
-}
-
-// Claim interface
-interface Claim {
-  id?: string;
-  account?: Account;
-  subject: Subject;
-  predicate: Predicate;
-  object: Object;
-}
-
-// Account interface
-interface Account {
-  claims: Claim[];
-  id: string;
-  label: string;
-}
-
-// Top-level data interface
 interface GetOutgoingEdgesQueryResponse {
-  claims: Claim[];
+  positions: Array<{
+    id: string;
+    shares: string;
+    account: {
+      id: string;
+      label: string;
+      image?: string;
+    };
+    term: {
+      triple: {
+        term_id: string;
+        counter_term_id?: string;
+        subject: {
+          term_id: string;
+          label: string;
+          value: any;
+        };
+        predicate: {
+          term_id: string;
+          label: string;
+          value: any;
+        };
+        object: {
+          term_id: string;
+          label: string;
+          value: any;
+        };
+        term: {
+          vaults: Array<{
+            term_id: string;
+            position_count: number;
+            total_shares: string;
+            current_share_price: string;
+          }>;
+        };
+        counter_term: {
+          vaults: Array<{
+            term_id: string;
+            position_count: number;
+            total_shares: string;
+            current_share_price: string;
+          }>;
+        };
+      };
+      vaults: Array<{
+        term_id: string;
+        position_count: number;
+        total_shares: string;
+        current_share_price: string;
+      }>;
+    };
+  }>;
 }
-
-const getOutgoingEdgesEdgesQuery = gql`
-  query outgoingEdges(
-    $where: claims_bool_exp
-    $orderBy: [claims_order_by!]
-    $limit: Int
-    $whereAccountsClaims: claims_bool_exp
-    $whereAccounts: accounts_bool_exp
-  ) {
-    claims(where: $where, order_by: $orderBy, limit: $limit) {
-      account {
-        id
-        label
-      }
-      subject {
-        label
-      }
-      predicate {
-        label
-      }
-      object {
-        id
-        label
-        accounts(where: $whereAccounts) {
-          id
-          label
-          claims(where: $whereAccountsClaims) {
-            subject {
-              id
-              label
-              type
-              value {
-                thing {
-                  url
-                  description
-                  name
-                }
-                account {
-                  id
-                  label
-                }
-                person {
-                  name
-                  description
-                  email
-                  identifier
-                }
-                organization {
-                  name
-                  email
-                  description
-                  url
-                }
-                book {
-                  name
-                  description
-                  url
-                }
-              }
-            }
-            predicate {
-              label
-            }
-            object {
-              id
-              label
-              type
-              value {
-                thing {
-                  url
-                  description
-                  name
-                }
-                account {
-                  id
-                  label
-                }
-                person {
-                  name
-                  description
-                  email
-                  identifier
-                }
-                organization {
-                  name
-                  email
-                  description
-                  url
-                }
-                book {
-                  name
-                  description
-                  url
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`;
-
 
 const getOutgoingEdgesQuery = gql`
   query outgoingEdges(
-    $where: claims_bool_exp
-    $orderBy: [claims_order_by!]
+    $where: positions_bool_exp
+    $orderBy: [positions_order_by!]
     $limit: Int
   ) {
-    claims(where: $where, order_by: $orderBy, limit: $limit) {
+    positions(where: $where, order_by: $orderBy, limit: $limit) {
+      id
+      shares
       account {
         id
         label
+        image
       }
-      subject {
-        label
-      }
-      predicate {
-        label
-      }
-      object {
-        id
-        label
-        value {
-          thing {
-            url
-            description
-            name
-          }
-          account {
-            id
+      term {
+        triple {
+          term_id
+          counter_term_id
+          subject {
+            term_id
             label
+            value {
+              thing {
+                url
+                description
+                name
+              }
+              account {
+                id
+                label
+              }
+              person {
+                name
+                description
+                email
+                identifier
+              }
+              organization {
+                name
+                email
+                description
+                url
+              }
+            }
           }
-          person {
-            name
-            description
-            email
-            identifier
+          predicate {
+            term_id
+            label
+            value {
+              thing {
+                url
+                description
+                name
+              }
+              account {
+                id
+                label
+              }
+              person {
+                name
+                description
+                email
+                identifier
+              }
+              organization {
+                name
+                email
+                description
+                url
+              }
+            }
           }
-          organization {
-            name
-            email
-            description
-            url
+          object {
+            term_id
+            label
+            value {
+              thing {
+                url
+                description
+                name
+              }
+              account {
+                id
+                label
+              }
+              person {
+                name
+                description
+                email
+                identifier
+              }
+              organization {
+                name
+                email
+                description
+                url
+              }
+            }
           }
-          book {
-            name
-            description
-            url
+          # Include support vault info
+          term {
+            vaults(where: { curve_id: { _eq: "1" } }) {
+              term_id
+              position_count
+              total_shares
+              current_share_price
+            }
           }
+          # Include counter vault info for opposition detection
+          counter_term {
+            vaults(where: { curve_id: { _eq: "1" } }) {
+              term_id
+              position_count
+              total_shares
+              current_share_price
+            }
+          }
+        }
+        vaults(where: { curve_id: { _eq: "1" } }) {
+          term_id
+          position_count
+          total_shares
+          current_share_price
         }
       }
     }
   }
 `;
 
-type PredicatesResponse = {
-  label: string;
-  id: string | undefined;
-  type: string;
-};
+const getNestedOutgoingEdgesQuery = gql`
+  query nestedOutgoingEdges(
+    $where: positions_bool_exp
+    $orderBy: [positions_order_by!]
+    $limit: Int
+    $nestedPredicate: String
+  ) {
+    positions(where: $where, order_by: $orderBy, limit: $limit) {
+      id
+      shares
+      account {
+        id
+        label
+        image
+      }
+      term {
+        triple {
+          term_id
+          counter_term_id
+          subject {
+            term_id
+            label
+            value {
+              account {
+                id
+                label
+              }
+            }
+          }
+          predicate {
+            term_id
+            label
+          }
+          object {
+            term_id
+            label
+            value {
+              account {
+                id
+                label
+              }
+            }
+          }
+          term {
+            vaults(where: { curve_id: { _eq: "1" } }) {
+              term_id
+              position_count
+              total_shares
+              current_share_price
+            }
+          }
+          counter_term {
+            vaults(where: { curve_id: { _eq: "1" } }) {
+              term_id
+              position_count
+              total_shares
+              current_share_price
+            }
+          }
+        }
+        vaults(where: { curve_id: { _eq: "1" } }) {
+          term_id
+          position_count
+          total_shares
+          current_share_price
+        }
+      }
+    }
+  }
+`;
 
-interface FormattedOutgoingEdgesPredicateQueryResponse {
-  id: string;
-  label: string;
-  type: string;
-  outgoingEdges: {
+interface FormattedOutgoingEdgesQueryResponse {
+  source_account: string;
+  outgoing_edges: {
     id: string;
     label: string;
-    predicates: PredicatesResponse[];
+    image?: string;
+    shares: string;
+    relationship: {
+      subject: string;
+      predicate: string;
+      object: string;
+    };
+    position_type: string;
+    opposition_metrics?: any;
+    vault_info?: any;
+    nested_interests?: {
+      relationship: string;
+      shares: string;
+      position_type: string;
+    }[];
   }[];
 }
 
 function formatResponse(
   result: GetOutgoingEdgesQueryResponse,
-): FormattedOutgoingEdgesPredicateQueryResponse {
-  const formattedResult: FormattedOutgoingEdgesPredicateQueryResponse = {
-    id: "",
-    label: "",
-    type: "",
-    outgoingEdges: [],
+  sourceAccount: string,
+  nestedResults?: { [accountId: string]: any[] }
+): FormattedOutgoingEdgesQueryResponse {
+  const formattedResult: FormattedOutgoingEdgesQueryResponse = {
+    source_account: sourceAccount,
+    outgoing_edges: [],
   };
-  for (const claim of result.claims) {
-    if (typeof claim.account !== "undefined") {
-      formattedResult.id = claim.account.id;
-      formattedResult.label = claim.account.label;
-      formattedResult.type = claim.predicate.label;
-    }
-    for (const account of claim.object.accounts || []) {
-      const outgoingEdges = {
-        id: account.id,
-        label: account.label,
-        type: claim.predicate.label,
-        predicates: [] as PredicatesResponse[],
-      } as {
-        id: string;
-        label: string;
-        predicates: PredicatesResponse[];
+
+  for (const position of result.positions) {
+    const processedPosition = processPositionWithOpposition(position, position.account.id);
+    if (processedPosition && processedPosition.type === 'relationship_position') {
+      const targetAccountId = position.term.triple.object.value?.account?.id;
+      const nestedInterests = nestedResults?.[targetAccountId] || [];
+      
+      const edge = {
+        id: targetAccountId || position.term.triple.object.term_id,
+        label: position.term.triple.object.label,
+        image: undefined,
+        shares: position.shares,
+        relationship: processedPosition.relationship!,
+        position_type: processedPosition.positionType,
+        opposition_metrics: processedPosition.oppositionMetrics,
+        vault_info: processedPosition.vault_info,
+        nested_interests: nestedInterests.slice(0, 5), // Top 5 nested interests
       };
-      for (const objectClaim of account.claims) {
-        const value = objectClaim.object.value;
-        const pred = {
-          label:
-            value && value.account
-              ? value.account.label
-              : objectClaim.object.label,
-          id: value && value.account ? value.account.id : objectClaim.object.id,
-          type: objectClaim.predicate.label,
-        };
-        outgoingEdges.predicates.push(pred);
-      }
-      formattedResult.outgoingEdges.push(outgoingEdges);
+      formattedResult.outgoing_edges.push(edge);
     }
   }
 
@@ -319,141 +354,187 @@ function formatResponse(
 
 export const getOutgoingEdgesOperation: GetOutgoingEdgesOperation = {
   description: `Get outgoing edges filtered on the type of relation for a given account.
-Also retrieves the outgoing edges edges optionally filtered on a type of relation.
+Also optionally retrieves nested relationships for discovered connections.
 
 ## Example:
 
 - user: what do the accounts I follow follow?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"follow","edges_edges_predicate":"follow"}
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"follow","edges_edges_predicate":"follow"}
 
 - user: what do the accounts I follow recommend?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"follow","edges_edges_predicate":"recommend"}
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"follow","edges_edges_predicate":"recommend"}
 
 - user: what are the things I prefer?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"prefers"}
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"prefers"}
 
-- user: what are my triples with a predicate 'prefer'?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"prefers"}
+- user: what are my relationships with a predicate 'follow'?
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","edges_predicate":"follow"}
 `,
   parameters,
   async execute(args) {
     try {
-      console.log("\n=== Calling GraphQL Search ===");
+      console.log('\n=== Getting Outgoing Edges ===');
 
       const address = args.account_id;
       const edgesPredicate = args.edges_predicate;
-      const edgesedgesPredicate = args.edges_edges_predicate;
+      const edgesEdgesPredicate = args.edges_edges_predicate;
 
-      let result: GetOutgoingEdgesQueryResponse | null = null;
-      if (edgesedgesPredicate && edgesedgesPredicate !== "") {
-        result = (await client.request(getOutgoingEdgesEdgesQuery, {
-          where: {
-            predicate: {
-              label: {
-                _ilike: `%${edgesPredicate}%`,
-              },
-            },
-            object: {
-              type: {
-                _eq: "Account",
-              },
-            },
-            account_id: {
-              _eq: address,
-            },
+      // Get outgoing edges (relationships where this account is the subject)
+      const result = (await client.request(getOutgoingEdgesQuery, {
+        where: {
+          account_id: {
+            _eq: address,
           },
-          whereAccounts: {
-            type: {
-              _eq: "Default",
-            },
-          },
-          whereAccountsClaims: {
+          term: {
             triple: {
               predicate: {
-                label: { _ilike: `%${edgesedgesPredicate}%` },
+                label: {
+                  _ilike: `%${edgesPredicate}%`,
+                },
               },
-            },
-          },
-          orderBy: [
-            {
-              vault: {
-                position_count: "desc",
-              },
-            },
-            {
-              object: {
-                vault: {
-                  position_count: "desc",
+              subject: {
+                value: {
+                  account: {
+                    id: {
+                      _eq: address,
+                    },
+                  },
                 },
               },
             },
-          ],
-          limit: 100,
-        })) as GetOutgoingEdgesQueryResponse;
-      } else {
-        result = (await client.request(getOutgoingEdgesQuery, {
-          where: {
-            predicate: {
-              label: {
-                _ilike: `%${edgesPredicate}%`,
-              },
-            },
-            object: {
-              type: {
-                _eq: "Account",
-              },
-            },
-            account_id: {
-              _eq: address,
-            },
           },
-          orderBy: [
-            {
-              vault: {
-                position_count: "desc",
-              },
-            },
-            {
-              object: {
-                vault: {
-                  position_count: "desc",
+          shares: {
+            _gt: '0',
+          },
+        },
+        orderBy: [
+          {
+            shares: 'desc',
+          },
+        ],
+        limit: 50,
+      })) as GetOutgoingEdgesQueryResponse;
+
+      // Filter out zero share positions
+      const filteredPositions = filterZeroSharePositions(result.positions);
+
+      let nestedResults: { [accountId: string]: any[] } = {};
+
+      // If nested predicate is specified, get nested relationships
+      if (edgesEdgesPredicate && edgesEdgesPredicate !== '') {
+        const accountIds = filteredPositions
+          .map(pos => pos.term.triple.object.value?.account?.id)
+          .filter(id => id)
+          .slice(0, 10); // Limit to first 10 to avoid too many requests
+
+        await Promise.all(
+          accountIds.map(async (accountId) => {
+            if (!accountId) return;
+            
+            try {
+              const nestedResult = (await client.request(getNestedOutgoingEdgesQuery, {
+                where: {
+                  account_id: {
+                    _eq: accountId,
+                  },
+                  term: {
+                    triple: {
+                      predicate: {
+                        label: {
+                          _ilike: `%${edgesEdgesPredicate}%`,
+                        },
+                      },
+                    },
+                  },
+                  shares: {
+                    _gt: '0',
+                  },
                 },
-              },
-            },
-          ],
-          limit: 100,
-        })) as GetOutgoingEdgesQueryResponse;
+                orderBy: [
+                  {
+                    shares: 'desc',
+                  },
+                ],
+                limit: 10,
+              })) as GetOutgoingEdgesQueryResponse;
+
+              nestedResults[accountId] = filterZeroSharePositions(nestedResult.positions)
+                .map(pos => {
+                  const processed = processPositionWithOpposition(pos, accountId);
+                  if (processed && processed.type === 'relationship_position') {
+                    return {
+                      relationship: processed.human_readable,
+                      shares: processed.shares,
+                      position_type: processed.positionType,
+                    };
+                  }
+                  return null;
+                })
+                .filter(item => item !== null);
+            } catch (error) {
+              console.warn(`Failed to get nested edges for ${accountId}:`, error);
+              nestedResults[accountId] = [];
+            }
+          })
+        );
       }
+
+      const formattedResult = formatResponse(
+        { positions: filteredPositions },
+        address,
+        nestedResults
+      );
 
       // Return in MCP format
       const response: CallToolResult = {
         content: [
           {
-            type: "resource",
+            type: 'resource',
             resource: {
-              uri: "get-outgoing-edges-result",
-              text: JSON.stringify(formatResponse(result)),
-              mimeType: "application/json",
+              uri: 'get-outgoing-edges-result',
+              text: JSON.stringify({
+                source_account: address,
+                predicate_filter: edgesPredicate,
+                nested_predicate_filter: edgesEdgesPredicate,
+                outgoing_edges: formattedResult.outgoing_edges.slice(0, 10),
+                total_count: formattedResult.outgoing_edges.length,
+              }),
+              mimeType: 'application/json',
             },
+          },
+          {
+            type: 'text',
+            text: `Outgoing Edges for ${address}:
+            
+**OUTGOING ${edgesPredicate.toUpperCase()} RELATIONSHIPS** (${formattedResult.outgoing_edges.length} total, top 10 shown):
+${formattedResult.outgoing_edges
+  .slice(0, 10)
+  .map(
+    (edge, i) =>
+      `${i + 1}. **${edge.label}** (${edge.shares} shares)
+   🔗 ${edge.relationship.subject} ${edge.relationship.predicate} ${edge.relationship.object}
+   📊 Position: ${edge.position_type}${edge.opposition_metrics ? ` (${Math.round(edge.opposition_metrics.oppositionRatio * 100)}% contested)` : ''}${
+        edge.nested_interests && edge.nested_interests.length > 0
+          ? `\n   🔍 Their interests: ${edge.nested_interests.slice(0, 3).map(ni => ni.relationship).join('; ')}`
+          : ''
+      }`
+  )
+  .join('\n\n')}
+
+📈 **Summary**: ${formattedResult.outgoing_edges.length} ${edgesPredicate} relationships${edgesEdgesPredicate ? ` with nested ${edgesEdgesPredicate} analysis` : ''}.`,
           },
         ],
       };
 
-      console.log("\n=== Response Format ===");
-      console.log(JSON.stringify(response, null, 2));
+      console.log('\n=== Outgoing Edges Response ===');
+      console.log(`Response size: ${JSON.stringify(response).length} characters`);
       return response;
     } catch (error) {
-      console.error("Error in atom search operation:", error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
+      return createErrorResponse(error, {
+        operation: 'get_outgoing_edges',
+        args,
+        phase: 'execution',
+      });
     }
   },
 };

@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { client } from "../graphql/client.js";
-import { SearchAtomsQuery } from "../graphql/generated/graphql.js";
-import { gql } from "graphql-request";
-import { removeEmptyFields } from "../lib/response.js";
+import { z } from 'zod';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { client } from '../graphql/client.js';
+import { SearchAtomsQuery } from '../graphql/generated/graphql.js';
+import { gql } from 'graphql-request';
+import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
 
 // Define the parameters schema
 const parameters = z.object({
@@ -23,13 +23,15 @@ export const SEARCH_ATOMS = function (params: string[]) {
     .map((param, index) => {
       return `$like${index}Str: String!`;
     })
-    .join(", ")}) {
+    .join(', ')}) {
     atoms(
       where: {
         _or: [
         ${params
           .map((param, index) => {
-            return `{ value: { account: { label: {  _ilike: $like${index}Str }}}}
+            return `{ data: { _ilike: $like${index}Str } }
+          { value: { text_object: { data: { _ilike: $like${index}Str } } } }
+          { value: { account: { label: {  _ilike: $like${index}Str }}}}
           { value: { thing: { url: {  _ilike: $like${index}Str }}}}
           { value: { thing: { name: {  _ilike: $like${index}Str }}}}
           { value: { thing: { description: {  _ilike: $like${index}Str }}}}
@@ -40,13 +42,26 @@ export const SEARCH_ATOMS = function (params: string[]) {
           { value: { organization: { name: { _ilike: $like${index}Str } } } }
           { value: { organization: { description: { _ilike: $like${index}Str } } } }`;
           })
-          .join("\n")}
+          .join('\n')}
         ]
       }
-      order_by: { vault: { position_count: desc } }
+      order_by: { term: { total_market_cap: desc } }
     ) {
-      id
+      term_id
+      image
+      type
       label
+      data
+      created_at
+      creator {
+        id
+        label
+        image
+        cached_image {
+          safe
+          url
+        }
+      }
       value {
         account {
           id
@@ -56,6 +71,7 @@ export const SEARCH_ATOMS = function (params: string[]) {
           name
           description
           email
+          url
           identifier
         }
         thing {
@@ -70,34 +86,58 @@ export const SEARCH_ATOMS = function (params: string[]) {
           url
         }
       }
-      vault {
-        position_count
-        current_share_price
-        total_shares
+      term {
+        total_assets
+        total_market_cap
+        vaults(where: { curve_id: { _eq: "1" } }) {
+          curve_id
+          term_id
+          position_count
+          current_share_price
+          total_shares
+          total_assets
+          market_cap
+        }
       }
       as_subject_triples {
-        id
+        term_id
         object {
-          id
+          term_id
           label
-          emoji
           image
+          type
         }
         predicate {
-          emoji
+          term_id
           label
           image
-          id
+          type
         }
-        counter_vault {
-          position_count
-          current_share_price
-          total_shares
+        counter_term {
+          total_market_cap
+          total_assets
+          vaults(where: { curve_id: { _eq: "1" } }) {
+            curve_id
+            term_id
+            position_count
+            current_share_price
+            total_shares
+            total_assets
+            market_cap
+          }
         }
-        vault {
-          position_count
-          current_share_price
-          total_shares
+        term {
+          total_market_cap
+          total_assets
+          vaults(where: { curve_id: { _eq: "1" } }) {
+            curve_id
+            term_id
+            position_count
+            current_share_price
+            total_shares
+            total_assets
+            market_cap
+          }
         }
       }
     }
@@ -107,6 +147,16 @@ export const SEARCH_ATOMS = function (params: string[]) {
 
 export const atomSearchOperation: AtomSearchOperation = {
   description: `Search for accounts, things, people, and concepts by name, description, URL or ens domain (e.g. john.eth).
+
+This tool is particularly powerful for discovering detailed relationships and semantic connections. When you search for an account or entity, it returns not just basic info but also rich "as_subject_triples" data showing all the relationships where this entity is the subject (e.g., "Account follows Person", "Account has tag Concept", "Account loves Protocol").
+
+The search results include:
+- Basic entity information (name, type, description)
+- Financial data (market cap, shares, positions)
+- **Rich relationship data**: All the semantic triples showing how this entity relates to others
+- Human-readable relationship descriptions for easy interpretation
+
+**Perfect for**: Getting comprehensive relationship profiles for accounts, discovering social connections, finding tagged entities, and understanding semantic relationships in the knowledge graph.
 
 Use the user input with synonyms or break it down into single words for arguments.
 
@@ -137,18 +187,27 @@ Examples of cases when to use the tool to assist the user and the arguments to e
 - user_message: do you know something about billy.eth
   tool_args: {"queries":["billy.eth","bill","william"]}
 
+- user_message: show me detailed info about jonathanprozzi.eth
+  tool_args: {"queries":["jonathanprozzi.eth","jonathanprozzi","jonathan"]}
+
 ### Response format
 
-When replying to the user using the tool call result, favor the most popular atoms(with the largest positions) and sort them by position descending.
-Always mention the atom ids. Give at least 10 connections and a good amount of details. Structure your reply but keep a natural and engaging format and follow the other speech directives.
+When replying to the user using the tool call result:
+- Favor the most popular atoms (with the largest positions) and sort them by position descending
+- Always mention the atom IDs and relationship counts
+- Give at least 10 connections and detailed relationship insights
+- Structure your reply naturally and engagingly
+- Highlight social connections, preferences, and semantic relationships
+- Focus on the rich relationship data in as_subject_triples
+- Present human-readable relationship descriptions based on the predicate and object data
 `,
   parameters,
   async execute(args) {
-    console.log("\n=== Starting Atom Search Operation ===");
-    console.log("Search string:", args.queries);
+    console.log('\n=== Starting Atom Search Operation ===');
+    console.log('Search string:', args.queries);
 
     try {
-      console.log("\n=== Calling GraphQL Search ===");
+      console.log('\n=== Calling GraphQL Search ===');
 
       const queryArgs = args.queries.slice(0, 5);
       const query = SEARCH_ATOMS(queryArgs);
@@ -165,83 +224,76 @@ Always mention the atom ids. Give at least 10 connections and a good amount of d
       //   likeStr: `%${args.queries}%`,
       // });
 
-      console.log("\n=== Raw Search Results ===");
-      console.log("Results type:", typeof atoms);
-      console.log("Is array:", Array.isArray(atoms));
-      console.log("Number of results:", atoms?.length || 0);
+      console.log('\n=== Raw Search Results ===');
+      console.log('Results type:', typeof atoms);
+      console.log('Is array:', Array.isArray(atoms));
+      console.log('Number of results:', atoms?.length || 0);
 
       if (atoms?.length > 0) {
-        console.log("\n=== Result Details ===");
+        console.log('\n=== Result Details ===');
         atoms.forEach((atom, i) => {
           console.log(`\nAtom ${i + 1}:`);
-          console.log("- Label:", atom.label);
-          console.log("- ID:", atom.id);
+          console.log('- Label:', atom.label);
+          console.log('- ID:', atom.term_id);
           if (atom.value?.account) {
-            console.log("- Account:", atom.value.account.label);
+            console.log('- Account:', atom.value.account.label);
           }
-          if (atom.vault) {
-            console.log("- Position count:", atom.vault.position_count);
+          if (atom.term?.vaults?.[0]) {
+            console.log(
+              '- Position count:',
+              atom.term.vaults[0].position_count
+            );
           }
         });
       }
 
       // Ensure results is an array and format for display
-      const validResults = (atoms || []).map((atom) => {
-        const type = atom.value?.account
-          ? "account"
-          : atom.value?.person
-            ? "person"
-            : atom.value?.thing
-              ? "thing"
-              : atom.value?.organization
-                ? "organization"
-                : "unknown";
+      const validResults = (atoms || [])
+        .slice(0, 10) // Limit to top 10 results for token management
+        .map((atom) => {
+          // Limit relationships to prevent token overflow
+          const limitedTriples = (atom.as_subject_triples || []).slice(0, 10);
 
-        const details = {
-          id: atom.id,
-          label: atom.label,
-          type,
-          value: atom.value,
-          vault: atom.vault,
-          triples: atom.as_subject_triples,
-        };
+          return {
+            term_id: atom.term_id,
+            label: atom.label,
+            image: atom.image,
+            type: atom.type,
+            creator: atom.creator,
+            value: atom.value,
+            term: atom.term,
+            as_subject_triples: limitedTriples,
+          };
+        });
 
-        return {
-          type: "text" as const,
-          text: `${atom.label || "Unnamed"} (${type})`,
-          data: details,
-        };
-      });
-
-      // Return in MCP format
+      // Return in MCP format - raw JSON like the old version
       const response: CallToolResult = {
         content: [
           {
-            type: "resource",
+            type: 'resource',
             resource: {
-              uri: "atom-search-result",
-              text: JSON.stringify(removeEmptyFields(atoms) || []),
-              mimeType: "application/json",
+              uri: 'atom-search-result',
+              text: JSON.stringify(removeEmptyFields(validResults)),
+              mimeType: 'application/json',
             },
           },
         ],
       };
 
-      console.log("\n=== Response Format ===");
-      console.log(JSON.stringify(response, null, 2));
+      console.log('\n=== Response Format ===');
+      console.log(
+        `Response size: ${JSON.stringify(response).length} characters`
+      );
+      console.log(
+        `Returning ${validResults.length} atoms with limited relationships`
+      );
       return response;
     } catch (error) {
-      console.error("Error in atom search operation:", error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
+      return createErrorResponse(error, {
+        operation: 'search_atoms',
+        args,
+        phase: 'execution',
+      });
     }
   },
 };

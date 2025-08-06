@@ -1,9 +1,12 @@
-import { z } from "zod";
-import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { client } from "../graphql/client.js";
-import { SearchAtomsQuery } from "../graphql/generated/graphql.js";
-import { gql } from "graphql-request";
-import { removeEmptyFields } from "../lib/response.js";
+import { z } from 'zod';
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { client } from '../graphql/client.js';
+import { gql } from 'graphql-request';
+import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
+import {
+  processPositionWithOpposition,
+  filterZeroSharePositions,
+} from '../lib/position-utils.js';
 
 // Define the parameters schema
 const parameters = z.object({
@@ -11,14 +14,14 @@ const parameters = z.object({
     .string()
     .min(1)
     .describe(
-      "The account id of the account to find the following for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b",
+      'The account id of the account to find the following for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b'
     ),
   predicate: z
     .string()
     .min(1)
     .describe(
       `Optional predicate to filter following positions on.
-Example: recommend, follow, like, dislike`,
+Example: recommend, follow, like, dislike`
     )
     .optional(),
 });
@@ -30,286 +33,553 @@ interface GetFollowingOperation {
   execute: (args: z.infer<typeof parameters>) => Promise<CallToolResult>;
 }
 
-// Base value types that can be null
-interface ThingValue {
-  url: string;
-  description: string;
-  name: string;
-}
-
-interface AccountValue {
-  id: string;
-  label: string;
-}
-
-// Value interface that contains possible entity types
-interface Value {
-  thing: ThingValue | null;
-  account: AccountValue | null;
-  person: null; // Always null in the example
-  organization: null; // Always null in the example
-}
-
-// Subject interface
-interface Subject {
-  label: string;
-  type?: string; // Optional since it's only present in nested claims
-  value?: Value; // Optional since it's only present in nested claims
-}
-
-// Predicate interface
-interface Predicate {
-  label: string;
-}
-
-// Object interface
-interface Object {
-  id?: string; // Optional since it's only in top-level object
-  label: string;
-  type?: string; // Optional since it's only in nested claims
-  value?: Value; // Optional since it's only in nested claims
-  accounts?: Account[]; // Optional since it's only in top-level object
-}
-
-// Claim interface
-interface Claim {
-  id?: string;
-  subject: Subject;
-  predicate: Predicate;
-  object: Object;
-}
-
-// Account interface
-interface Account {
-  claims: Claim[];
-  id: string;
-  label: string;
-}
-
-// Top-level data interface
-interface GetFollowingQueryResponse {
-  claims: Claim[];
-}
-
 const getFollowingQuery = gql`
   query following(
-    $where: claims_bool_exp
-    $orderBy: [claims_order_by!]
+    $where: positions_bool_exp
+    $orderBy: [positions_order_by!]
     $limit: Int
-    $whereAccountsClaims: claims_bool_exp
-    $whereAccounts: accounts_bool_exp
   ) {
-    claims(where: $where, order_by: $orderBy, limit: $limit) {
-      subject {
-        label
-      }
-      predicate {
-        label
-      }
-      object {
+    positions(where: $where, order_by: $orderBy, limit: $limit) {
+      id
+      shares
+      account {
         id
         label
-        accounts(where: $whereAccounts) {
-          id
-          label
-          claims(where: $whereAccountsClaims) {
-            subject {
-              label
-              type
-              value {
-                thing {
-                  url
-                  description
-                  name
-                }
-                account {
-                  id
-                  label
-                }
-                person {
-                  name
-                  description
-                  email
-                  identifier
-                }
-                organization {
-                  name
-                  email
-                  description
-                  url
-                }
+        image
+      }
+      term {
+        triple {
+          term_id
+          counter_term_id
+          subject {
+            term_id
+            label
+            value {
+              thing {
+                url
+                description
+                name
               }
-            }
-            predicate {
-              label
-            }
-            object {
-              label
-              type
-              value {
-                thing {
-                  url
-                  description
-                  name
-                }
-                account {
-                  id
-                  label
-                }
-                person {
-                  name
-                  description
-                  email
-                  identifier
-                }
-                organization {
-                  name
-                  email
-                  description
-                  url
-                }
+              account {
+                id
+                label
+              }
+              person {
+                name
+                description
+                email
+                identifier
+              }
+              organization {
+                name
+                email
+                description
+                url
               }
             }
           }
+          predicate {
+            term_id
+            label
+            value {
+              thing {
+                url
+                description
+                name
+              }
+              account {
+                id
+                label
+              }
+              person {
+                name
+                description
+                email
+                identifier
+              }
+              organization {
+                name
+                email
+                description
+                url
+              }
+            }
+          }
+          object {
+            term_id
+            label
+            value {
+              thing {
+                url
+                description
+                name
+              }
+              account {
+                id
+                label
+              }
+              person {
+                name
+                description
+                email
+                identifier
+              }
+              organization {
+                name
+                email
+                description
+                url
+              }
+            }
+          }
+          # Include support vault info
+          term {
+            vaults(where: { curve_id: { _eq: "1" } }) {
+              term_id
+              position_count
+              total_shares
+              current_share_price
+            }
+          }
+          # Include counter vault info for opposition detection
+          counter_term {
+            vaults(where: { curve_id: { _eq: "1" } }) {
+              term_id
+              position_count
+              total_shares
+              current_share_price
+            }
+          }
+        }
+        vaults(where: { curve_id: { _eq: "1" } }) {
+          term_id
+          position_count
+          total_shares
+          current_share_price
         }
       }
     }
   }
 `;
 
-type PredicatesResponse = {
-  [type: string]: {
-    label: string;
-    id: string | undefined;
-  };
-};
+interface GetFollowingQueryResponse {
+  positions: Array<{
+    id: string;
+    shares: string;
+    account: {
+      id: string;
+      label: string;
+      image?: string;
+    };
+    term: {
+      triple: {
+        term_id: string;
+        subject: {
+          term_id: string;
+          label: string;
+          value: any;
+        };
+        predicate: {
+          term_id: string;
+          label: string;
+          value: any;
+        };
+        object: {
+          term_id: string;
+          label: string;
+          value: any;
+        };
+      };
+      vaults: Array<{
+        term_id: string;
+        position_count: number;
+        total_shares: string;
+        current_share_price: string;
+      }>;
+    };
+  }>;
+}
 
 interface FormattedFollowingQueryResponse {
   following: {
     id: string;
     label: string;
-    predicates: PredicatesResponse[];
+    image?: string;
+    shares: string;
+    triple: {
+      term_id: string;
+      subject: any;
+      predicate: any;
+      object: any;
+    };
+    vault_info: any;
   }[];
 }
 
 function formatResponse(
-  result: GetFollowingQueryResponse,
+  result: GetFollowingQueryResponse
 ): FormattedFollowingQueryResponse {
   const formattedResult: FormattedFollowingQueryResponse = { following: [] };
-  for (const claim of result.claims) {
-    for (const account of claim.object.accounts || []) {
-      const following = {
-        id: account.id,
-        label: account.label,
-        predicates: [] as PredicatesResponse[],
-      } as {
-        id: string;
-        label: string;
-        predicates: PredicatesResponse[];
-      };
-      for (const objectClaim of account.claims) {
-        const pred = {} as PredicatesResponse;
-        pred[`${objectClaim.predicate.label}` as string] = {
-          label: objectClaim.object.label,
-          id: objectClaim.object.id,
-        };
-        following.predicates.push(pred);
-      }
-      formattedResult.following.push(following);
-    }
+
+  for (const position of result.positions) {
+    const following = {
+      id: position.account.id,
+      label: position.account.label,
+      image: position.account.image,
+      shares: position.shares,
+      triple: {
+        term_id: position.term.triple.term_id,
+        subject: position.term.triple.subject,
+        predicate: position.term.triple.predicate,
+        object: position.term.triple.object,
+      },
+      vault_info: position.term.vaults[0] || null,
+    };
+    formattedResult.following.push(following);
   }
 
   return formattedResult;
 }
 
 export const getFollowingOperation: GetFollowingOperation = {
-  description: `Get atom ids an account address is following.
+  description: `Get detailed information about accounts that a given address is following and their relationships.
+
+This tool finds what accounts the specified address is following and then discovers what relationships/activities those followed accounts have (what they follow, recommend, like, etc.). This provides rich social context about the following network and shared interests.
 
 ## Example:
 
-- user: what do the account I follow follow?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
+- user: what do the accounts I follow do?
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
 
-- user: what do the account I follow recommend?
-  tool_args: {"identifier":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"recommend"}
+- user: what do the accounts I follow recommend?
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"recommend"}
+
+- user: show me the activity patterns of accounts I follow
+  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
+
+The results include detailed relationship patterns of followed accounts, providing insights into the social graph and discovery of new interesting connections.
 `,
   parameters,
   async execute(args) {
     try {
-      console.log("\n=== Calling GraphQL Search ===");
+      console.log(
+        '\n=== Getting Following Accounts and Their Relationships ==='
+      );
 
       const address = args.account_id;
+      const predicateFilter = args.predicate || 'follow';
 
-      const result = (await client.request(getFollowingQuery, {
+      console.log('\n=== Query Variables ===');
+      console.log('Address:', address);
+      console.log('Predicate Filter:', predicateFilter);
+
+      // First get accounts this address is following
+      const queryVariables = {
         where: {
-          predicate: {
-            label: {
-              _ilike: "%follow%",
-            },
-          },
-          object: {
-            type: {
-              _eq: "Account",
-            },
-          },
           account_id: {
             _eq: address,
           },
-        },
-        whereAccounts: {
-          type: {
-            _eq: "Default",
-          },
-        },
-        whereAccountsClaims: {
-          triple: { predicate: { label: { _ilike: `%${args.predicate}%` } } },
-        },
-        orderBy: [
-          {
-            vault: {
-              position_count: "desc",
-            },
-          },
-          {
-            object: {
-              vault: {
-                position_count: "desc",
+          term: {
+            triple: {
+              predicate: {
+                label: {
+                  _ilike: '%follow%',
+                },
+              },
+              object: {
+                value: {
+                  account: {
+                    type: {
+                      _eq: 'Default',
+                    },
+                  },
+                },
               },
             },
           },
+          shares: {
+            _gt: '0',
+          },
+        },
+        orderBy: [
+          {
+            shares: 'desc',
+          },
         ],
-        limit: 100,
-      })) as GetFollowingQueryResponse;
+        limit: 50,
+      };
 
-      // Return in MCP format
+      console.log('\n=== GraphQL Query Variables ===');
+      console.log(JSON.stringify(queryVariables, null, 2));
+
+      const followingResult = (await client.request(
+        getFollowingQuery,
+        queryVariables
+      )) as GetFollowingQueryResponse;
+
+      console.log('\n=== Raw Following Result ===');
+      console.log('Result type:', typeof followingResult);
+      console.log('Has positions:', !!followingResult.positions);
+      console.log('Positions count:', followingResult.positions?.length || 0);
+      console.log('Raw result:', JSON.stringify(followingResult, null, 2));
+
+      // If no results, try a simpler query to debug
+      if (
+        !followingResult.positions ||
+        followingResult.positions.length === 0
+      ) {
+        console.log('\n=== Trying Simplified Query for Debug ===');
+        try {
+          const simplifiedQuery = `
+            query simple_following($account_id: String!) {
+              positions(where: { account_id: { _eq: $account_id } }, limit: 10) {
+                id
+                shares
+                account {
+                  id
+                  label
+                }
+                term {
+                  triple {
+                    term_id
+                    predicate {
+                      label
+                    }
+                    object {
+                      label
+                      value {
+                        account {
+                          id
+                          label
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          `;
+
+          const simplifiedResult = await client.request(simplifiedQuery, {
+            account_id: address,
+          });
+          console.log(
+            'Simplified query result:',
+            JSON.stringify(simplifiedResult, null, 2)
+          );
+        } catch (error) {
+          console.log('Simplified query error:', error);
+        }
+      }
+
+      // Now for each followed account, get their activities/relationships
+      const enrichedFollowing = await Promise.all(
+        followingResult.positions.map(async (followingPosition) => {
+          const followedAccountId =
+            followingPosition.term.triple?.object?.value?.account?.id;
+          if (!followedAccountId) return null;
+
+          // Get what this followed account is doing (their positions)
+          const followedAccountActivitiesResult = (await client.request(
+            getFollowingQuery,
+            {
+              where: {
+                account_id: {
+                  _eq: followedAccountId,
+                },
+                term: {
+                  triple: {
+                    predicate: {
+                      label: {
+                        _ilike: `%${predicateFilter}%`,
+                      },
+                    },
+                  },
+                },
+                shares: {
+                  _gt: '0',
+                },
+              },
+              orderBy: [
+                {
+                  shares: 'desc',
+                },
+              ],
+              limit: 20,
+            }
+          )) as GetFollowingQueryResponse;
+
+          // Filter out zero-share positions and process with opposition detection
+          const nonZeroPositions = filterZeroSharePositions(
+            followedAccountActivitiesResult.positions
+          );
+
+          const activities = nonZeroPositions
+            .map((pos) => {
+              const processedPosition = processPositionWithOpposition(
+                pos,
+                followedAccountId
+              );
+              if (
+                !processedPosition ||
+                processedPosition.type !== 'relationship_position'
+              ) {
+                return null;
+              }
+
+              return {
+                relationship: processedPosition.relationship,
+                shares: processedPosition.shares,
+                position_type: processedPosition.positionType,
+                predicate_label: processedPosition.predicate_label,
+                opposition_metrics: processedPosition.oppositionMetrics,
+                vault_info: processedPosition.vault_info,
+                human_readable: processedPosition.human_readable,
+              };
+            })
+            .filter((activity) => activity !== null);
+
+          // Determine engagement level based on share amount (used internally only)
+          const shareAmount = BigInt(followingPosition.shares || '0');
+          const isActivelyFollowing = shareAmount > BigInt('100000000000000000'); // > 0.1 ETH equivalent
+
+          return {
+            followed_account: {
+              id: followedAccountId,
+              label: followingPosition.term.triple?.object?.label,
+              image: followingPosition.account.image,
+              is_actively_following: isActivelyFollowing,
+              followed_with_shares: followingPosition.shares,
+              vault_info: followingPosition.term.vaults?.[0],
+            },
+            activities: activities.slice(0, 10), // Top 10 activities
+            activities_count: activities.length,
+            opposition_count: activities.filter(
+              (a) => a.position_type === 'oppose'
+            ).length,
+            activity_summary: activities
+              .slice(0, 5)
+              .map((a) => {
+                let summary = a.human_readable;
+                if (a.position_type === 'oppose') summary += ' [OPPOSING]';
+                if (
+                  a.opposition_metrics &&
+                  a.opposition_metrics.oppositionRatio > 0.25
+                ) {
+                  summary += ` [${Math.round(
+                    a.opposition_metrics.oppositionRatio * 100
+                  )}% opposition]`;
+                }
+                return summary;
+              })
+              .join('; '),
+          };
+        })
+      );
+
+      const validFollowing = enrichedFollowing.filter(Boolean);
+
+      const formattedResult = {
+        source_account: address,
+        following_count: validFollowing.length,
+        following: validFollowing.sort((a, b) => {
+          if (!a || !b) return 0;
+          const sharesA = BigInt(
+            a.followed_account.followed_with_shares || '0'
+          );
+          const sharesB = BigInt(
+            b.followed_account.followed_with_shares || '0'
+          );
+          return sharesA > sharesB ? -1 : sharesA < sharesB ? 1 : 0;
+        }),
+        summary: {
+          total_following: validFollowing.length,
+          total_activities_discovered: validFollowing.reduce(
+            (sum, f) => (f ? sum + f.activities_count : sum),
+            0
+          ),
+          predicate_filter: predicateFilter,
+        },
+      };
+
+      // Return in MCP format with essential data for UI
       const response: CallToolResult = {
         content: [
           {
-            type: "resource",
+            type: 'resource',
             resource: {
-              uri: "get-following-result",
-              text: JSON.stringify(formatResponse(result)),
-              mimeType: "application/json",
+              uri: 'get-following-result',
+              text: JSON.stringify({
+                source_account: address,
+                following: validFollowing
+                  .slice(0, 5)
+                  .map((f) =>
+                    f
+                      ? {
+                          account_id: f.followed_account.id,
+                          label: f.followed_account.label,
+                          is_actively_following: f.followed_account.is_actively_following,
+                          activities_count: f.activities_count,
+                          opposition_count: f.opposition_count,
+                        }
+                      : null
+                  )
+                  .filter(Boolean),
+                total_following: validFollowing.length,
+                total_activities: validFollowing.reduce(
+                  (sum, f) => (f ? sum + f.activities_count : sum),
+                  0
+                ),
+              }),
+              mimeType: 'application/json',
             },
+          },
+          {
+            type: 'text',
+            text: `Following Analysis for ${address}:
+            
+**FOLLOWING** (${validFollowing.length} accounts, top 5 shown):
+${validFollowing
+  .slice(0, 5)
+  .map((following, i) =>
+    following
+      ? `${i + 1}. **${following.followed_account.label}** - ${
+          following.followed_account.is_actively_following ? 'Actively' : 'Casually'
+        } following
+   📊 ${following.activities_count} ${predicateFilter} activities${
+          following.opposition_count > 0
+            ? ` (${following.opposition_count} opposing)`
+            : ''
+        }
+   🔗 ${following.activity_summary.slice(0, 100)}${
+          following.activity_summary.length > 100 ? '...' : ''
+        }`
+      : ''
+  )
+  .filter(Boolean)
+  .join('\n\n')}
+
+📈 **Summary**: Following ${
+              validFollowing.length
+            } accounts with ${validFollowing.reduce(
+              (sum, f) => (f ? sum + f.activities_count : sum),
+              0
+            )} total relationship patterns discovered.`,
           },
         ],
       };
 
-      console.log("\n=== Response Format ===");
-      console.log(JSON.stringify(response, null, 2));
+      console.log('\n=== Following Response ===');
+      console.log(
+        `Response size: ${JSON.stringify(response).length} characters`
+      );
       return response;
     } catch (error) {
-      console.error("Error in atom search operation:", error);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
+      return createErrorResponse(error, {
+        operation: 'get_following',
+        args,
+        phase: 'execution',
+      });
     }
   },
 };

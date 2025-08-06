@@ -2,7 +2,11 @@ import { z } from 'zod';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { client } from '../graphql/client.js';
 import { gql } from 'graphql-request';
-import { createErrorResponse } from '../lib/response.js';
+import {
+  createErrorResponse,
+  executeWithErrorHandling,
+  ErrorContext,
+} from '../lib/response.js';
 
 // Define the parameters schema
 const parameters = z.object({
@@ -42,52 +46,63 @@ export const searchAccountIdsOperation: SearchAccountIdsOperation = {
 `,
   parameters,
   async execute(args) {
-    console.log('\n=== Starting Search Account IDs Operation ===');
-    console.log('Identifier:', args.identifier);
+    const context: ErrorContext = {
+      operation: 'search_account_ids',
+      args,
+      requestId: Math.random().toString(36).substring(7),
+    };
 
     try {
-      console.log('\n=== Calling GraphQL Search ===');
+      // Validate input parameters
+      const validatedArgs = parameters.parse(args);
+      context.phase = 'validation_complete';
 
-      const identifier = args.identifier;
+      return await executeWithErrorHandling(async () => {
+        context.phase = 'graphql_query';
+        console.log('\n=== Calling GraphQL Search ===');
 
-      const result = (await client.request(searchAccountIdsQuery, {
-        where: {
-          label: {
-            _ilike: `%${identifier}%`,
-          },
-        },
-      })) as { accounts: { id: string }[] };
+        const identifier = validatedArgs.identifier;
 
-      // Validate results
-      if (!result || !result.accounts) {
-        throw new Error(
-          'Invalid response from GraphQL API - missing accounts field'
-        );
-      }
-
-      const accounts = Array.isArray(result.accounts) ? result.accounts : [];
-
-      // Return in MCP format with essential data for UI
-      const response: CallToolResult = {
-        content: [
-          {
-            type: 'resource',
-            resource: {
-              uri: 'search-account-ids-result',
-              text: JSON.stringify({
-                query: identifier,
-                results: accounts.slice(0, 10).map((account) => ({
-                  id: account.id,
-                })),
-                total_found: accounts.length,
-                showing: Math.min(accounts.length, 10),
-              }),
-              mimeType: 'application/json',
+        const result = (await client.request(searchAccountIdsQuery, {
+          where: {
+            label: {
+              _ilike: `%${identifier}%`,
             },
           },
-          {
-            type: 'text',
-            text: `Search Results for "${identifier}":
+        })) as { accounts: { id: string }[] };
+
+        context.phase = 'response_formatting';
+
+        // Validate results
+        if (!result || !result.accounts) {
+          throw new Error(
+            'Invalid response from GraphQL API - missing accounts field'
+          );
+        }
+
+        const accounts = Array.isArray(result.accounts) ? result.accounts : [];
+
+        // Return in MCP format with essential data for UI
+        const response: CallToolResult = {
+          content: [
+            {
+              type: 'resource',
+              resource: {
+                uri: 'search-account-ids-result',
+                text: JSON.stringify({
+                  query: identifier,
+                  results: accounts.slice(0, 10).map((account) => ({
+                    id: account.id,
+                  })),
+                  total_found: accounts.length,
+                  showing: Math.min(accounts.length, 10),
+                }),
+                mimeType: 'application/json',
+              },
+            },
+            {
+              type: 'text',
+              text: `Search Results for "${identifier}":
               
 Found ${accounts.length} matching account(s):
 ${accounts
@@ -104,21 +119,18 @@ ${
       } more results. Use specific account IDs with other tools for detailed information.`
     : 'Use these account IDs with other tools to get detailed information about each account.'
 }`,
-          },
-        ],
-      };
+            },
+          ],
+        };
 
-      console.log('\n=== Response Format ===');
-      console.log(
-        `Response size: ${JSON.stringify(response).length} characters`
-      );
-      return response;
+        console.log('\n=== Response Format ===');
+        console.log(
+          `Response size: ${JSON.stringify(response).length} characters`
+        );
+        return response;
+      }, context);
     } catch (error) {
-      return createErrorResponse(error, {
-        operation: 'search_account_ids',
-        args,
-        phase: 'execution',
-      });
+      return createErrorResponse(error, context);
     }
   },
 };

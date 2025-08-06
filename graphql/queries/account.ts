@@ -118,12 +118,11 @@ export const GET_ACCOUNT_INFO = gql`
           }
         }
       }
-      positions(where: { 
-        _and: [
-          { account_id: { _ilike: $address } }
-          { shares: { _gt: "0" } }
-        ]
-      }) {
+      positions(
+        where: {
+          _and: [{ account_id: { _ilike: $address } }, { shares: { _gt: "0" } }]
+        }
+      ) {
         id
         shares
         term {

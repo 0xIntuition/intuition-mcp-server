@@ -142,137 +142,152 @@ export const SEARCH_ATOMS = function (params: string[]) {
       }
     }
   }
-  `;
+`;
 };
 
 export const atomSearchOperation: AtomSearchOperation = {
-  description: `Search for atoms based on one or more queries. Returns atoms with their data, relationships, and positions.
+  description: `Search for accounts, things, people, and concepts by name, description, URL or ens domain (e.g. john.eth).
+
+This tool is particularly powerful for discovering detailed relationships and semantic connections. When you search for an account or entity, it returns not just basic info but also rich "as_subject_triples" data showing all the relationships where this entity is the subject (e.g., "Account follows Person", "Account has tag Concept", "Account loves Protocol").
+
+The search results include:
+- Basic entity information (name, type, description)
+- Financial data (market cap, shares, positions)
+- **Rich relationship data**: All the semantic triples showing how this entity relates to others
+- Human-readable relationship descriptions for easy interpretation
+
+**Perfect for**: Getting comprehensive relationship profiles for accounts, discovering social connections, finding tagged entities, and understanding semantic relationships in the knowledge graph.
+
+Use the user input with synonyms or break it down into single words for arguments.
 
 ### Examples
 Examples of cases when to use the tool to assist the user and the arguments to extract:
 
-- user_message: "search ethereum"
-  tool_args: {"queries":["ethereum"]}
+- user_message: search atoms for ethereum
+  tool_args: {"queries":["ethereum","eth"]}
 
-- user_message: "search intuition protocol"
-  tool_args: {"queries":["intuition", "protocol"]}
+- user_message: search for data about intuition
+  tool_args: {"queries":["intuition"]}
 
-- user_message: "search for AI and machine learning"
-  tool_args: {"queries":["AI", "machine learning"]}
+- user_message: what information you have about centralized exchanges
+  tool_args: {"queries":["centralized exchanges","cex"]}
+
+- user_message: what's in intuition about ethereum
+  tool_args: {"queries":["ethereum","eth"]}
+
+- user_message: find atoms for vitalik buterin
+  tool_args: {"queries":["vitalik buterin","vitalik.eth","vitalik"]}
+
+- user_message: tell me what you know about blockchains
+  tool_args: {"queries":["blockchain"]}
+
+- user_message: what connection does he have to vitalik
+  tool_args: {"queries":["vitalik","vitalik.eth","vitalik buterin"]}
+
+- user_message: do you know something about billy.eth
+  tool_args: {"queries":["billy.eth","bill","william"]}
+
+- user_message: show me detailed info about jonathanprozzi.eth
+  tool_args: {"queries":["jonathanprozzi.eth","jonathanprozzi","jonathan"]}
 
 ### Response format
 
-When replying to the user using the tool call result, favor the most popular atoms(with the largest positions) and sort them by position descending.
-Always mention the atom ids. Give at least 10 connections and a good amount of details. Structure your reply but keep a natural and engaging format and follow the other speech directives.
+When replying to the user using the tool call result:
+- Favor the most popular atoms (with the largest positions) and sort them by position descending
+- Always mention the atom IDs and relationship counts
+- Give at least 10 connections and detailed relationship insights
+- Structure your reply naturally and engagingly
+- Highlight social connections, preferences, and semantic relationships
+- Focus on the rich relationship data in as_subject_triples
+- Present human-readable relationship descriptions based on the predicate and object data
 `,
   parameters,
   async execute(args) {
     console.log('\n=== Starting Atom Search Operation ===');
-    console.log('Queries:', args.queries);
-
-    // Create variables object dynamically based on number of queries
-    const variables: Record<string, string> = {};
-    args.queries.forEach((query, index) => {
-      const likeStr = `%${query}%`;
-      variables[`like${index}Str`] = likeStr;
-    });
-
-    const query = gql`
-      ${SEARCH_ATOMS(args.queries)}
-    `;
+    console.log('Search string:', args.queries);
 
     try {
-      console.log('\n=== Calling GraphQL Query ===');
-      const data = await client.request<{ atoms: any[] }>(query, variables);
+      console.log('\n=== Calling GraphQL Search ===');
 
-      console.log('\n=== GraphQL Response ===');
-      console.log(`Found ${data.atoms?.length || 0} atoms`);
+      const queryArgs = args.queries.slice(0, 5);
+      const query = SEARCH_ATOMS(queryArgs);
+      console.log(query);
 
-      const cleanedData = removeEmptyFields(data);
-      const atoms = cleanedData?.atoms || [];
+      const vars: { [type: string]: string } = {};
+      for (let i = 0; i < args.queries.length; i++) {
+        vars[`like${i}Str`] = `%${args.queries[i]}`;
+      }
+      const { atoms } = (await client.request(query, vars)) as SearchAtomsQuery;
+      // const sdk = getSdk(client);
 
-      // Process results to add human-readable info and relationships
-      const processedAtoms = atoms.map((atom: any) => {
-        // Count relationships where this atom is the subject
-        const relationshipCount = atom.as_subject_triples?.length || 0;
-        
-        // Get vault metrics for sorting
-        const vault = atom.term?.vaults?.[0];
-        const marketCap = vault?.market_cap || '0';
-        const positionCount = vault?.position_count || 0;
-        
-        // Create human-readable relationships
-        const topRelationships = (atom.as_subject_triples || [])
-          .slice(0, 5)
-          .map((triple: any) => ({
-            relationship: `${atom.label} ${triple.predicate?.label || 'relates to'} ${triple.object?.label || 'Unknown'}`,
-            object_id: triple.object?.term_id,
-            predicate_id: triple.predicate?.term_id,
-          }));
+      // const { atoms } = await sdk.SearchAtoms({
+      //   likeStr: `%${args.queries}%`,
+      // });
 
-        return {
-          ...atom,
-          human_readable: {
-            label: atom.label || atom.data || 'Unknown',
+      console.log('\n=== Raw Search Results ===');
+      console.log('Results type:', typeof atoms);
+      console.log('Is array:', Array.isArray(atoms));
+      console.log('Number of results:', atoms?.length || 0);
+
+      if (atoms?.length > 0) {
+        console.log('\n=== Result Details ===');
+        atoms.forEach((atom, i) => {
+          console.log(`\nAtom ${i + 1}:`);
+          console.log('- Label:', atom.label);
+          console.log('- ID:', atom.term_id);
+          if (atom.value?.account) {
+            console.log('- Account:', atom.value.account.label);
+          }
+          if (atom.term?.vaults?.[0]) {
+            console.log(
+              '- Position count:',
+              atom.term.vaults[0].position_count
+            );
+          }
+        });
+      }
+
+      // Ensure results is an array and format for display
+      const validResults = (atoms || [])
+        .slice(0, 10) // Limit to top 10 results for token management
+        .map((atom) => {
+          // Limit relationships to prevent token overflow
+          const limitedTriples = (atom.as_subject_triples || []).slice(0, 10);
+
+          return {
+            term_id: atom.term_id,
+            label: atom.label,
+            image: atom.image,
             type: atom.type,
-            creator: atom.creator?.label || atom.creator?.id,
-            description: atom.value?.thing?.description || 
-                        atom.value?.person?.description || 
-                        atom.value?.organization?.description || 
-                        atom.data,
-            relationship_count: relationshipCount,
-            market_cap: marketCap,
-            position_count: positionCount,
-            top_relationships: topRelationships,
-          },
-        };
-      });
+            creator: atom.creator,
+            value: atom.value,
+            term: atom.term,
+            as_subject_triples: limitedTriples,
+          };
+        });
 
-      // Sort by market cap (descending)
-      processedAtoms.sort((a: any, b: any) => {
-        const aMarketCap = BigInt(a.human_readable.market_cap || '0');
-        const bMarketCap = BigInt(b.human_readable.market_cap || '0');
-        return aMarketCap > bMarketCap ? -1 : aMarketCap < bMarketCap ? 1 : 0;
-      });
-
-      // Format response for LLM
-      const formattedResults = processedAtoms.slice(0, 20).map((atom: any, index: number) => {
-        const relationships = atom.human_readable.top_relationships
-          .map((rel: any) => `  - ${rel.relationship}`)
-          .join('\n');
-        
-        return `${index + 1}. **${atom.human_readable.label}** (ID: ${atom.term_id})
-   Type: ${atom.human_readable.type}
-   Positions: ${atom.human_readable.position_count}
-   Market Cap: ${atom.human_readable.market_cap}
-   Relationships: ${atom.human_readable.relationship_count}
-${relationships ? `   Top connections:\n${relationships}` : ''}`;
-      }).join('\n\n');
-
-      return {
+      // Return in MCP format - raw JSON like the old version
+      const response: CallToolResult = {
         content: [
           {
             type: 'resource',
             resource: {
-              uri: 'atom-search-results',
-              text: JSON.stringify({
-                query: args.queries,
-                total_results: atoms.length,
-                atoms: processedAtoms.slice(0, 20),
-              }),
+              uri: 'atom-search-result',
+              text: JSON.stringify(removeEmptyFields(validResults)),
               mimeType: 'application/json',
             },
           },
-          {
-            type: 'text',
-            text: `Found ${atoms.length} atoms matching "${args.queries.join('", "')}":
-
-${formattedResults}
-
-${atoms.length > 20 ? `\n(Showing top 20 of ${atoms.length} results, sorted by market cap)` : ''}`,
-          },
         ],
       };
+
+      console.log('\n=== Response Format ===');
+      console.log(
+        `Response size: ${JSON.stringify(response).length} characters`
+      );
+      console.log(
+        `Returning ${validResults.length} atoms with limited relationships`
+      );
+      return response;
     } catch (error) {
       return createErrorResponse(error, {
         operation: 'search_atoms',

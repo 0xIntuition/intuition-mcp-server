@@ -3,10 +3,10 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { client } from '../graphql/client.js';
 import { getSdk } from '../graphql/generated/graphql.js';
 import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
-import { 
-  processPositionWithOpposition, 
+import {
+  processPositionWithOpposition,
   filterZeroSharePositions,
-  ProcessedPositionData 
+  ProcessedPositionData,
 } from '../lib/position-utils.js';
 
 // Define the parameters schema
@@ -76,7 +76,10 @@ function processClaimsData(triples: any[]) {
 }
 
 // Helper function to process and format positions data (contains the rich financial + relationship data)
-function processPositionsData(positions: any[], accountAddress: string): ProcessedPositionData[] {
+function processPositionsData(
+  positions: any[],
+  accountAddress: string
+): ProcessedPositionData[] {
   if (!positions || positions.length === 0) return [];
 
   // Filter out zero-share positions first
@@ -203,7 +206,10 @@ When replying to the user using the tool call result:
           type: account.type,
         },
         claims_and_relationships: processClaimsData(account.triples || []),
-        financial_positions: processPositionsData(account.positions || [], address!),
+        financial_positions: processPositionsData(
+          account.positions || [],
+          address!
+        ),
         associated_atoms: processAtomsData(account.atoms || []),
         raw_data: account, // Keep raw data for debugging
       };
@@ -242,7 +248,10 @@ When replying to the user using the tool call result:
                     id: claim.id,
                     human_readable: claim.human_readable,
                   })),
-                top_positions: processPositionsData(account.positions || [], address!)
+                top_positions: processPositionsData(
+                  account.positions || [],
+                  address!
+                )
                   .slice(0, 10)
                   .map((pos) => ({
                     type: pos.type,
@@ -275,7 +284,9 @@ ${processPositionsData(account.positions || [], address!)
       line += ` [OPPOSING]`;
     }
     if (pos.oppositionMetrics && pos.oppositionMetrics.oppositionRatio > 0) {
-      line += ` [${Math.round(pos.oppositionMetrics.oppositionRatio * 100)}% opposition]`;
+      line += ` [${Math.round(
+        pos.oppositionMetrics.oppositionRatio * 100
+      )}% opposition]`;
     }
     return line;
   })

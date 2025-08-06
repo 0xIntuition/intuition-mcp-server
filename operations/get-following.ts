@@ -3,9 +3,9 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { client } from '../graphql/client.js';
 import { gql } from 'graphql-request';
 import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
-import { 
-  processPositionWithOpposition, 
-  filterZeroSharePositions
+import {
+  processPositionWithOpposition,
+  filterZeroSharePositions,
 } from '../lib/position-utils.js';
 
 // Define the parameters schema
@@ -410,12 +410,20 @@ The results include detailed relationship patterns of followed accounts, providi
           )) as GetFollowingQueryResponse;
 
           // Filter out zero-share positions and process with opposition detection
-          const nonZeroPositions = filterZeroSharePositions(followedAccountActivitiesResult.positions);
-          
+          const nonZeroPositions = filterZeroSharePositions(
+            followedAccountActivitiesResult.positions
+          );
+
           const activities = nonZeroPositions
             .map((pos) => {
-              const processedPosition = processPositionWithOpposition(pos, followedAccountId);
-              if (!processedPosition || processedPosition.type !== 'relationship_position') {
+              const processedPosition = processPositionWithOpposition(
+                pos,
+                followedAccountId
+              );
+              if (
+                !processedPosition ||
+                processedPosition.type !== 'relationship_position'
+              ) {
                 return null;
               }
 
@@ -441,14 +449,21 @@ The results include detailed relationship patterns of followed accounts, providi
             },
             activities: activities.slice(0, 10), // Top 10 activities
             activities_count: activities.length,
-            opposition_count: activities.filter(a => a.position_type === 'oppose').length,
+            opposition_count: activities.filter(
+              (a) => a.position_type === 'oppose'
+            ).length,
             activity_summary: activities
               .slice(0, 5)
               .map((a) => {
                 let summary = a.human_readable;
                 if (a.position_type === 'oppose') summary += ' [OPPOSING]';
-                if (a.opposition_metrics && a.opposition_metrics.oppositionRatio > 0.25) {
-                  summary += ` [${Math.round(a.opposition_metrics.oppositionRatio * 100)}% opposition]`;
+                if (
+                  a.opposition_metrics &&
+                  a.opposition_metrics.oppositionRatio > 0.25
+                ) {
+                  summary += ` [${Math.round(
+                    a.opposition_metrics.oppositionRatio * 100
+                  )}% opposition]`;
                 }
                 return summary;
               })
@@ -527,7 +542,9 @@ ${validFollowing
           following.followed_account.followed_with_shares
         } shares)
    📊 ${following.activities_count} ${predicateFilter} activities${
-          following.opposition_count > 0 ? ` (${following.opposition_count} opposing)` : ''
+          following.opposition_count > 0
+            ? ` (${following.opposition_count} opposing)`
+            : ''
         }
    🔗 ${following.activity_summary.slice(0, 100)}${
           following.activity_summary.length > 100 ? '...' : ''

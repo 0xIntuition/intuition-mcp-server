@@ -2,6 +2,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express, { Request, Response } from 'express';
 import {
   CallToolRequestSchema,
@@ -13,15 +14,12 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { performance } from 'perf_hooks';
 import { randomUUID } from 'node:crypto';
 
-import * as triples from './operations/triples.js';
 import { atomSearchOperation } from './operations/search-atoms.js';
 import { getAccountInfoOperation } from './operations/get-account-info.js';
 import { searchListsOperation } from './operations/search-lists.js';
 import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
-// import { getOutgoingEdgesOperation } from './operations/get-outgoing-edges.js';
-// import { getInboundRelationsOperation } from './operations/get-inbound-relations.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {
@@ -44,11 +42,6 @@ const debug = (...args: any[]) => {
 
 // Define available tools once
 const TOOLS = [
-  {
-    name: 'extract_triples',
-    description: 'Extract triples from user input',
-    inputSchema: zodToJsonSchema(triples.ExtractTriplesSchema),
-  },
   {
     name: 'search_atoms',
     description: atomSearchOperation.description,
@@ -79,39 +72,31 @@ const TOOLS = [
     description: searchAccountIdsOperation.description,
     inputSchema: zodToJsonSchema(searchAccountIdsOperation.parameters),
   },
-  // {
-  //   name: 'get_outgoing_edges',
-  //   description: getOutgoingEdgesOperation.description,
-  //   inputSchema: zodToJsonSchema(getOutgoingEdgesOperation.parameters),
-  // },
-  // {
-  //   name: 'get_inbound_relations',
-  //   description: getInboundRelationsOperation.description,
-  //   inputSchema: zodToJsonSchema(getInboundRelationsOperation.parameters),
-  // },
 ] as const;
 
-// Simple session tracking (your original approach)
+// Simple session tracking (from working portal)
 interface Transport {
   transport: StreamableHTTPServerTransport;
   lastActivity: number;
   createdAt: number;
 }
 
-// Transport configuration (your original settings)
+// Transport configuration (from working portal)
 const TRANSPORT_TIMEOUT = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000; // Start with 1 second
 const MAX_RETRY_DELAY_MS = 5000; // Cap at 5 seconds
 
-// Session configuration (your original settings)
+// Session configuration (from working portal)
 const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const SESSION_CLEANUP_INTERVAL = 60 * 1000; // 1 minute
 const SESSION_MAX_AGE = 30 * 60 * 1000; // 30 minutes
 
 const transports: Record<string, Transport> = {};
+// Keep SSE transports separate for backward compatibility
+const sseTransports: Record<string, SSEServerTransport> = {};
 
-// Cleanup stale sessions periodically (your original logic)
+// Cleanup stale sessions periodically (from working portal)
 setInterval(() => {
   const now = Date.now();
   Object.entries(transports).forEach(async ([sessionId, session]) => {
@@ -135,7 +120,7 @@ setInterval(() => {
   });
 }, SESSION_CLEANUP_INTERVAL);
 
-// Helper function to handle transport errors (your original logic)
+// Helper function to handle transport errors (from working portal)
 async function handleTransportError(
   transport: StreamableHTTPServerTransport,
   error: any
@@ -168,13 +153,13 @@ async function handleTransportError(
   throw new Error('Failed to reconnect transport after maximum retry attempts');
 }
 
-// Request tracing middleware (your original approach)
+// Request tracing middleware (from working portal)
 const tracingMiddleware = (req: Request, res: Response, next: Function) => {
   const requestId = randomUUID();
   const cfRay = req.headers['cf-ray'] as string;
 
-  // Add Render tracing headers
-  res.setHeader('Rndr-Id', requestId);
+  // Add tracing headers
+  res.setHeader('Request-Id', requestId);
 
   // Attach to request for logging
   (req as any).tracingInfo = {
@@ -198,15 +183,12 @@ const SERVER_CONFIG = {
 const server = new Server(SERVER_CONFIG, {
   capabilities: {
     tools: {
-      extract_triples: true,
       search_atoms: true,
       get_account_info: true,
       search_lists: true,
       get_following: true,
       get_followers: true,
       search_account_ids: true,
-      // get_outgoing_edges: true,
-      // get_inbound_relations: true,
     },
   },
 });
@@ -235,13 +217,6 @@ server.setRequestHandler(
       let result: CallToolResult;
 
       switch (request.params.name) {
-        case 'extract_triples': {
-          const args = triples.ExtractTriplesSchema.parse(
-            request.params.arguments
-          );
-          result = await triples.extractTriples(args.input);
-          break;
-        }
         case 'search_atoms': {
           const args = atomSearchOperation.parameters.parse(
             request.params.arguments
@@ -284,20 +259,6 @@ server.setRequestHandler(
           result = await searchAccountIdsOperation.execute(args);
           break;
         }
-        // case 'get_outgoing_edges': {
-        //   const args = getOutgoingEdgesOperation.parameters.parse(
-        //     request.params.arguments
-        //   );
-        //   result = await getOutgoingEdgesOperation.execute(args);
-        //   break;
-        // }
-        // case 'get_inbound_relations': {
-        //   const args = getInboundRelationsOperation.parameters.parse(
-        //     request.params.arguments
-        //   );
-        //   result = await getInboundRelationsOperation.execute(args);
-        //   break;
-        // }
         default:
           throw new Error(`Unknown tool: ${request.params.name}`);
       }
@@ -353,7 +314,7 @@ async function runHttpServer() {
   const port = parseInt(process.env.PORT || '3001', 10);
   app.use(express.json());
 
-  // RENDER REQUIREMENT: Trust proxy for Render's load balancer
+  // Trust proxy for load balancer
   app.set('trust proxy', true);
 
   // Basic request logging
@@ -369,6 +330,7 @@ async function runHttpServer() {
       version: SERVER_CONFIG.version,
       name: SERVER_CONFIG.name,
       activeSessions: Object.keys(transports).length,
+      activeSSESessions: Object.keys(sseTransports).length,
       uptime: process.uptime(),
     });
   });
@@ -407,7 +369,7 @@ async function runHttpServer() {
     }
   });
 
-  // MCP endpoint (following official SDK documentation pattern)
+  // Main MCP endpoint (simplified from working portal)
   app.post('/mcp', tracingMiddleware, async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     const { requestId, cfRay } = (req as any).tracingInfo;
@@ -501,7 +463,7 @@ async function runHttpServer() {
 
       console.log(
         `[Existing Session] ID: ${sessionId} Age: ${
-          Date.now() - (transports[sessionId]?.createdAt || Date.now())
+          Date.now() - session.createdAt
         }ms`
       );
 
@@ -592,6 +554,29 @@ async function runHttpServer() {
     }
   });
 
+  // SSE endpoint (keep for backward compatibility)
+  app.get('/sse', async (req, res) => {
+    const transport = new SSEServerTransport('/messages', res);
+    sseTransports[transport.sessionId] = transport;
+
+    res.on('close', () => {
+      delete sseTransports[transport.sessionId];
+    });
+
+    await server.connect(transport);
+  });
+
+  // SSE message endpoint (keep for backward compatibility)
+  app.post('/messages', async (req, res) => {
+    const sessionId = req.query.sessionId as string;
+    const transport = sseTransports[sessionId];
+    if (transport) {
+      await transport.handlePostMessage(req, res, req.body);
+    } else {
+      res.status(400).send('No transport found for sessionId');
+    }
+  });
+
   // Handle session cleanup on DELETE
   app.delete('/mcp', async (req: Request, res: Response) => {
     const sessionId = req.headers['mcp-session-id'] as string;
@@ -612,12 +597,12 @@ async function runHttpServer() {
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  // RENDER REQUIREMENT: Bind to 0.0.0.0 for Render compatibility
+  // Bind to 0.0.0.0 for deployment compatibility
   const httpServer = app.listen(port, '0.0.0.0', () => {
-    debug(`HTTP server listening on 0.0.0.0:${port} (Render-compatible)`);
+    debug(`HTTP server listening on 0.0.0.0:${port} (Deployment-compatible)`);
   });
 
-  // RENDER OPTIMIZATION: Timeout configurations for Render
+  // Timeout configurations for deployment
   httpServer.keepAliveTimeout = 120000; // 120 seconds
   httpServer.headersTimeout = 120000; // 120 seconds
 

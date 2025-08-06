@@ -4,7 +4,7 @@ const graphqlUrl =
   process.env.INTUITION_GRAPHQL_URL ||
   'https://prod.base-mainnet-v-1-0.intuition.sh/v1/graphql';
 
-const TIMEOUT_MS = 10000; // 10 seconds
+const TIMEOUT_MS = 30000; // 30 seconds
 const CACHE_TTL = 60000; // Cache for 1 minute
 
 // Simple in-memory cache
@@ -68,7 +68,6 @@ export const client = new GraphQLClient(graphqlUrl, {
     'Content-Type': 'application/json',
     Accept: 'application/json',
     'User-Agent': '@0xintuition/mcp-server',
-    Origin: 'https://prod.base.intuition-api.com',
   },
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
     const startTime = Date.now();

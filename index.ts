@@ -20,8 +20,8 @@ import { searchListsOperation } from './operations/search-lists.js';
 import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
-import { getOutgoingEdgesOperation } from './operations/get-outgoing-edges.js';
-import { getInboundRelationsOperation } from './operations/get-inbound-relations.js';
+// import { getOutgoingEdgesOperation } from './operations/get-outgoing-edges.js';
+// import { getInboundRelationsOperation } from './operations/get-inbound-relations.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {
@@ -79,16 +79,16 @@ const TOOLS = [
     description: searchAccountIdsOperation.description,
     inputSchema: zodToJsonSchema(searchAccountIdsOperation.parameters),
   },
-  {
-    name: 'get_outgoing_edges',
-    description: getOutgoingEdgesOperation.description,
-    inputSchema: zodToJsonSchema(getOutgoingEdgesOperation.parameters),
-  },
-  {
-    name: 'get_inbound_relations',
-    description: getInboundRelationsOperation.description,
-    inputSchema: zodToJsonSchema(getInboundRelationsOperation.parameters),
-  },
+  // {
+  //   name: 'get_outgoing_edges',
+  //   description: getOutgoingEdgesOperation.description,
+  //   inputSchema: zodToJsonSchema(getOutgoingEdgesOperation.parameters),
+  // },
+  // {
+  //   name: 'get_inbound_relations',
+  //   description: getInboundRelationsOperation.description,
+  //   inputSchema: zodToJsonSchema(getInboundRelationsOperation.parameters),
+  // },
 ] as const;
 
 // Simple session tracking (your original approach)
@@ -205,8 +205,8 @@ const server = new Server(SERVER_CONFIG, {
       get_following: true,
       get_followers: true,
       search_account_ids: true,
-      get_outgoing_edges: true,
-      get_inbound_relations: true,
+      // get_outgoing_edges: true,
+      // get_inbound_relations: true,
     },
   },
 });
@@ -284,20 +284,20 @@ server.setRequestHandler(
           result = await searchAccountIdsOperation.execute(args);
           break;
         }
-        case 'get_outgoing_edges': {
-          const args = getOutgoingEdgesOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await getOutgoingEdgesOperation.execute(args);
-          break;
-        }
-        case 'get_inbound_relations': {
-          const args = getInboundRelationsOperation.parameters.parse(
-            request.params.arguments
-          );
-          result = await getInboundRelationsOperation.execute(args);
-          break;
-        }
+        // case 'get_outgoing_edges': {
+        //   const args = getOutgoingEdgesOperation.parameters.parse(
+        //     request.params.arguments
+        //   );
+        //   result = await getOutgoingEdgesOperation.execute(args);
+        //   break;
+        // }
+        // case 'get_inbound_relations': {
+        //   const args = getInboundRelationsOperation.parameters.parse(
+        //     request.params.arguments
+        //   );
+        //   result = await getInboundRelationsOperation.execute(args);
+        //   break;
+        // }
         default:
           throw new Error(`Unknown tool: ${request.params.name}`);
       }

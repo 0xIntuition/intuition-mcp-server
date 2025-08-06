@@ -358,11 +358,16 @@ The results include both the follower information and their relationship pattern
             })
             .filter((interest) => interest !== null);
 
+          // Determine engagement level based on share amount (used internally only)
+          const shareAmount = BigInt(followerPosition.shares || '0');
+          const isHighlyEngaged = shareAmount > BigInt('1000000000000000000'); // > 1 ETH equivalent
+
           return {
             follower: {
               id: followerPosition.account.id,
               label: followerPosition.account.label,
               image: followerPosition.account.image,
+              is_highly_engaged: isHighlyEngaged,
               follows_with_shares: followerPosition.shares,
               vault_info: followerPosition.term.vaults?.[0],
             },
@@ -414,7 +419,7 @@ The results include both the follower information and their relationship pattern
                 followers: enrichedFollowers.slice(0, 5).map((follower) => ({
                   account_id: follower.follower.id,
                   label: follower.follower.label,
-                  shares: follower.follower.follows_with_shares,
+                  is_highly_engaged: follower.follower.is_highly_engaged,
                   interests_count: follower.interests_count,
                   opposition_count: follower.opposition_count,
                 })),
@@ -436,9 +441,9 @@ ${enrichedFollowers
   .slice(0, 5)
   .map(
     (follower, i) =>
-      `${i + 1}. **${follower.follower.label}** (${
-        follower.follower.follows_with_shares
-      } shares)
+      `${i + 1}. **${follower.follower.label}** - ${
+        follower.follower.is_highly_engaged ? 'Highly engaged' : 'Active'
+      } follower
    📊 ${follower.interests_count} ${predicateFilter} interests${
         follower.opposition_count > 0 ? ` (${follower.opposition_count} opposing)` : ''
       }

@@ -1,10 +1,9 @@
 {
   "name": "@0xintuition/mcp-server",
-  "version": "0.7.0",
+  "version": "0.2.0",
   "description": "MCP server for interacting with the Intuition knowledge graph.",
   "license": "MIT",
-  "author": "",
-  "homepage": "",
+  "author": "@0xintuition",
   "type": "module",
   "bin": {
     "intuition-mcp-server": "dist/index.js"

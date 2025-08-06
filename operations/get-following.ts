@@ -439,11 +439,16 @@ The results include detailed relationship patterns of followed accounts, providi
             })
             .filter((activity) => activity !== null);
 
+          // Determine engagement level based on share amount (used internally only)
+          const shareAmount = BigInt(followingPosition.shares || '0');
+          const isActivelyFollowing = shareAmount > BigInt('100000000000000000'); // > 0.1 ETH equivalent
+
           return {
             followed_account: {
               id: followedAccountId,
               label: followingPosition.term.triple?.object?.label,
               image: followingPosition.account.image,
+              is_actively_following: isActivelyFollowing,
               followed_with_shares: followingPosition.shares,
               vault_info: followingPosition.term.vaults?.[0],
             },
@@ -513,7 +518,7 @@ The results include detailed relationship patterns of followed accounts, providi
                       ? {
                           account_id: f.followed_account.id,
                           label: f.followed_account.label,
-                          shares: f.followed_account.followed_with_shares,
+                          is_actively_following: f.followed_account.is_actively_following,
                           activities_count: f.activities_count,
                           opposition_count: f.opposition_count,
                         }
@@ -538,9 +543,9 @@ ${validFollowing
   .slice(0, 5)
   .map((following, i) =>
     following
-      ? `${i + 1}. **${following.followed_account.label}** (${
-          following.followed_account.followed_with_shares
-        } shares)
+      ? `${i + 1}. **${following.followed_account.label}** - ${
+          following.followed_account.is_actively_following ? 'Actively' : 'Casually'
+        } following
    📊 ${following.activities_count} ${predicateFilter} activities${
           following.opposition_count > 0
             ? ` (${following.opposition_count} opposing)`

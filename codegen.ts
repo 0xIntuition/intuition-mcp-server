@@ -1,26 +1,26 @@
-import type { CodegenConfig } from '@graphql-codegen/cli';
+import type { CodegenConfig } from "@graphql-codegen/cli";
 
 const config: CodegenConfig = {
-  schema: 'https://prod.base-mainnet-v-1-0.intuition.sh/v1/graphql',
-  documents: ['graphql/**/*.ts'],
+  schema: "https://testnet.intuition.sh/v1/graphql",
+  documents: ["graphql/**/*.ts"],
   generates: {
-    './graphql/generated/graphql.ts': {
+    "./graphql/generated/graphql.ts": {
       plugins: [
-        'typescript',
-        'typescript-operations',
-        'typescript-graphql-request',
+        "typescript",
+        "typescript-operations",
+        "typescript-graphql-request",
       ],
       config: {
         scalars: {
-          numeric: 'string',
-          timestamptz: 'string',
-          uuid: 'string',
-          jsonb: 'Record<string, any>',
+          numeric: "string",
+          timestamptz: "string",
+          uuid: "string",
+          jsonb: "Record<string, any>",
         },
         dedupeFragments: true,
         skipTypename: true,
         avoidOptionals: false,
-        gqlImport: 'graphql-request#gql',
+        gqlImport: "graphql-request#gql",
       },
     },
   },

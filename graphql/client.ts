@@ -1,8 +1,8 @@
-import { GraphQLClient } from 'graphql-request';
+import { GraphQLClient } from "graphql-request";
 
 const graphqlUrl =
   process.env.INTUITION_GRAPHQL_URL ||
-  'https://prod.base-mainnet-v-1-0.intuition.sh/v1/graphql';
+  "https://testnet.intuition.sh/v1/graphql";
 
 const TIMEOUT_MS = 30000; // 30 seconds
 const CACHE_TTL = 60000; // Cache for 1 minute
@@ -16,10 +16,10 @@ type CacheEntry = {
 const queryCache = new Map<string, CacheEntry>();
 
 const getCacheKey = (input: RequestInfo | URL, init?: RequestInit): string => {
-  if (typeof input !== 'string') {
+  if (typeof input !== "string") {
     input = input.toString();
   }
-  return `${input}-${init?.body || ''}`;
+  return `${input}-${init?.body || ""}`;
 };
 
 const getFromCache = (key: string): any | null => {
@@ -46,43 +46,44 @@ const logPerformance = (
   startTime: number,
   operation: string,
   success: boolean,
-  cached: boolean = false
+  cached: boolean = false,
 ) => {
   const duration = Date.now() - startTime;
   console.log(
     `[Performance] ${operation} - Duration: ${duration}ms - Status: ${
-      success ? 'Success' : 'Failed'
-    } - Cached: ${cached}`
+      success ? "Success" : "Failed"
+    } - Cached: ${cached}`,
   );
 
   // Alert on slow queries
   if (duration > 5000) {
     console.warn(
-      `[Performance Warning] Slow operation detected: ${operation} took ${duration}ms`
+      `[Performance Warning] Slow operation detected: ${operation} took ${duration}ms`,
     );
   }
 };
 
 export const client = new GraphQLClient(graphqlUrl, {
   headers: {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    'User-Agent': '@0xintuition/mcp-server',
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "User-Agent": "@0xintuition/mcp-server",
   },
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
     const startTime = Date.now();
     const operation = init?.body
-      ? JSON.parse(init.body as string)?.operationName || 'Unknown Query'
-      : 'Unknown Query';
+      ? JSON.parse(init.body as string)?.operationName || "Unknown Query"
+      : "Unknown Query";
 
     // Try to get from cache first
+    console.log("graphqlURL", graphqlUrl);
     const cacheKey = getCacheKey(input, init);
     const cachedData = getFromCache(cacheKey);
 
     if (cachedData) {
       logPerformance(startTime, operation, true, true);
       return new Response(JSON.stringify(cachedData), {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
         status: 200,
       });
     }

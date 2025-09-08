@@ -1,13 +1,13 @@
-import { z } from 'zod';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { client } from '../graphql/client.js';
-import { getSdk } from '../graphql/generated/graphql.js';
-import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
+import { z } from "zod";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { client } from "../graphql/client.js";
+import { getSdk } from "../graphql/generated/graphql.js";
+import { removeEmptyFields, createErrorResponse } from "../lib/response.js";
 import {
   processPositionWithOpposition,
   filterZeroSharePositions,
   ProcessedPositionData,
-} from '../lib/position-utils.js';
+} from "../lib/position-utils.js";
 
 // Define the parameters schema
 const parameters = z
@@ -16,7 +16,7 @@ const parameters = z
     identifier: z.string().optional(),
   })
   .refine((data) => data.address || data.identifier, {
-    message: 'Either address or identifier must be provided',
+    message: "Either address or identifier must be provided",
   });
 
 // Helper function to process and format triples (claims) data
@@ -30,55 +30,55 @@ function processClaimsData(triples: any[]) {
         id: triple.subject?.term_id,
         label: triple.subject?.label,
         type: triple.subject?.value?.thing
-          ? 'thing'
+          ? "thing"
           : triple.subject?.value?.account
-          ? 'account'
-          : triple.subject?.value?.person
-          ? 'person'
-          : triple.subject?.value?.organization
-          ? 'organization'
-          : 'unknown',
+            ? "account"
+            : triple.subject?.value?.person
+              ? "person"
+              : triple.subject?.value?.organization
+                ? "organization"
+                : "unknown",
         details: triple.subject?.value,
       },
       predicate: {
         id: triple.predicate?.term_id,
         label: triple.predicate?.label,
         type: triple.predicate?.value?.thing
-          ? 'thing'
+          ? "thing"
           : triple.predicate?.value?.account
-          ? 'account'
-          : triple.predicate?.value?.person
-          ? 'person'
-          : triple.predicate?.value?.organization
-          ? 'organization'
-          : 'unknown',
+            ? "account"
+            : triple.predicate?.value?.person
+              ? "person"
+              : triple.predicate?.value?.organization
+                ? "organization"
+                : "unknown",
         details: triple.predicate?.value,
       },
       object: {
         id: triple.object?.term_id,
         label: triple.object?.label,
         type: triple.object?.value?.thing
-          ? 'thing'
+          ? "thing"
           : triple.object?.value?.account
-          ? 'account'
-          : triple.object?.value?.person
-          ? 'person'
-          : triple.object?.value?.organization
-          ? 'organization'
-          : 'unknown',
+            ? "account"
+            : triple.object?.value?.person
+              ? "person"
+              : triple.object?.value?.organization
+                ? "organization"
+                : "unknown",
         details: triple.object?.value,
       },
     },
-    human_readable: `${triple.subject?.label || 'Unknown'} ${
-      triple.predicate?.label || 'relates to'
-    } ${triple.object?.label || 'Unknown'}`,
+    human_readable: `${triple.subject?.label || "Unknown"} ${
+      triple.predicate?.label || "relates to"
+    } ${triple.object?.label || "Unknown"}`,
   }));
 }
 
 // Helper function to process and format positions data (contains the rich financial + relationship data)
 function processPositionsData(
   positions: any[],
-  accountAddress: string
+  accountAddress: string,
 ): ProcessedPositionData[] {
   if (!positions || positions.length === 0) return [];
 
@@ -92,8 +92,8 @@ function processPositionsData(
 
   // Sort by shares amount (largest first)
   return processedPositions.sort((a, b) => {
-    const sharesA = BigInt(a.shares || '0');
-    const sharesB = BigInt(b.shares || '0');
+    const sharesA = BigInt(a.shares || "0");
+    const sharesB = BigInt(b.shares || "0");
     return sharesA > sharesB ? -1 : sharesA < sharesB ? 1 : 0;
   });
 }
@@ -166,35 +166,54 @@ When replying to the user using the tool call result:
 `,
   parameters,
   async execute(args) {
-    console.log('\n=== Starting Get Account Info Operation ===');
+    console.log("\n=== Starting Get Account Info Operation ===");
     let address = args.address || args.identifier;
+    let originalInput = address;
 
     // Normalize address case - convert to lowercase if it's a hex address
-    if (address && address.startsWith('0x')) {
+    if (address && address.startsWith("0x")) {
       address = address.toLowerCase();
+    } else if (address && address.includes(".eth")) {
+      // For ENS names, we need to resolve to the wallet address
+      // First try the ENS name directly in the account query
+      console.log("ENS name detected:", address);
+      try {
+        console.log("\n=== Trying ENS Resolution via GraphQL ===");
+        const sdk = getSdk(client);
+        const { account: ensAccount } = await sdk.GetAccountInfo({
+          address: address,
+        });
+
+        if (ensAccount && ensAccount.id && ensAccount.id.startsWith("0x")) {
+          // Found account, use the resolved wallet address for position queries
+          const walletAddress = ensAccount.id.toLowerCase();
+          console.log("Resolved ENS to wallet address:", walletAddress);
+          address = walletAddress;
+        }
+      } catch (error) {
+        console.log("ENS resolution failed, will use original address:", error);
+      }
     }
 
-    console.log('Address:', address);
+    console.log("Final address for queries:", address);
 
     try {
-      console.log('\n=== Calling GraphQL Query ===');
+      console.log("\n=== Calling GraphQL Query ===");
       const sdk = getSdk(client);
-      const { accounts } = await sdk.GetAccountInfo({
+      const { account } = await sdk.GetAccountInfo({
         address: address!,
       });
 
-      if (!accounts || accounts.length === 0) {
+      if (!account) {
         return {
           content: [
             {
-              type: 'text',
+              type: "text",
               text: `No account found for address ${address}`,
             },
           ],
         };
       }
-
-      const account = accounts[0];
 
       // Process the data to make it more accessible to the LLM
       const processedData = {
@@ -208,7 +227,7 @@ When replying to the user using the tool call result:
         claims_and_relationships: processClaimsData(account.triples || []),
         financial_positions: processPositionsData(
           account.positions || [],
-          address!
+          address!,
         ),
         associated_atoms: processAtomsData(account.atoms || []),
         raw_data: account, // Keep raw data for debugging
@@ -227,9 +246,9 @@ When replying to the user using the tool call result:
       const response: CallToolResult = {
         content: [
           {
-            type: 'resource',
+            type: "resource",
             resource: {
-              uri: 'account-info-result',
+              uri: "account-info-result",
               text: JSON.stringify({
                 account: {
                   id: account.id,
@@ -250,7 +269,7 @@ When replying to the user using the tool call result:
                   })),
                 top_positions: processPositionsData(
                   account.positions || [],
-                  address!
+                  address!,
                 )
                   .slice(0, 10)
                   .map((pos) => ({
@@ -262,40 +281,40 @@ When replying to the user using the tool call result:
                     opposition_metrics: pos.oppositionMetrics,
                   })),
               }),
-              mimeType: 'application/json',
+              mimeType: "application/json",
             },
           },
           {
-            type: 'text',
-            text: `Account: **${account.label || address}** (${account.id})
+            type: "text",
+            text: `Account: **${account.label || originalInput}** (${account.id})
 
-**RELATIONSHIPS** (${(account.triples || []).length} total, showing top 10):
-${processClaimsData(account.triples || [])
-  .slice(0, 10)
-  .map((claim, i) => `${i + 1}. ${claim.human_readable}`)
-  .join('\n')}
-
-**POSITIONS** (${(account.positions || []).length} total, showing top 10):
+**🏦 FINANCIAL POSITIONS** (${(account.positions || []).length} total, showing top 10):
 ${processPositionsData(account.positions || [], address!)
   .slice(0, 10)
   .map((pos, i) => {
     let line = `${i + 1}. ${pos.human_readable}`;
-    if (pos.positionType === 'oppose') {
+    if (pos.positionType === "oppose") {
       line += ` [OPPOSING]`;
     }
     if (pos.oppositionMetrics && pos.oppositionMetrics.oppositionRatio > 0) {
       line += ` [${Math.round(
-        pos.oppositionMetrics.oppositionRatio * 100
+        pos.oppositionMetrics.oppositionRatio * 100,
       )}% opposition]`;
     }
     return line;
   })
-  .join('\n')}
+  .join("\n")}
 
-**ATOMS** (${(account.atoms || []).length} associated)
+**🔗 RELATIONSHIPS** (${(account.triples || []).length} total, showing top 5):
+${processClaimsData(account.triples || [])
+  .slice(0, 5)
+  .map((claim, i) => `${i + 1}. ${claim.human_readable}`)
+  .join("\n")}
+
+**⚛️ ATOMS** (${(account.atoms || []).length} associated)
 
 💡 *Use search_atoms with "${
-              account.label || address
+              account.label || originalInput
             }" for additional relationship discovery.*`,
           },
         ],
@@ -304,9 +323,9 @@ ${processPositionsData(account.positions || [], address!)
       return response;
     } catch (error) {
       return createErrorResponse(error, {
-        operation: 'get_account_info',
+        operation: "get_account_info",
         args,
-        phase: 'execution',
+        phase: "execution",
       });
     }
   },

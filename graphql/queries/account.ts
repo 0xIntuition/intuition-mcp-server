@@ -7,14 +7,9 @@ export const GET_ACCOUNT_INFO = gql`
   ${AtomValue}
 
   query GetAccountInfo($address: String!) {
-    accounts(
-      where: {
-        _or: [{ id: { _ilike: $address } }, { label: { _ilike: $address } }]
-      }
-      limit: 1
-    ) {
+    account(id: $address) {
       ...AccountMetadata
-      atoms {
+      atoms(limit: 20) {
         term_id
         label
         data
@@ -119,9 +114,9 @@ export const GET_ACCOUNT_INFO = gql`
         }
       }
       positions(
-        where: {
-          _and: [{ account_id: { _ilike: $address } }, { shares: { _gt: "0" } }]
-        }
+        where: { shares: { _gt: "0" } }
+        limit: 50
+        order_by: { shares: desc }
       ) {
         id
         shares

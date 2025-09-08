@@ -1,13 +1,14 @@
-import { z } from 'zod';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { client } from '../graphql/client.js';
-import { SearchAtomsQuery } from '../graphql/generated/graphql.js';
-import { gql } from 'graphql-request';
-import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
-import { 
-  processPositionWithOpposition, 
-  filterZeroSharePositions
-} from '../lib/position-utils.js';
+import { z } from "zod";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { client } from "../graphql/client.js";
+import { SearchAtomsQuery } from "../graphql/generated/graphql.js";
+import { gql } from "graphql-request";
+import { removeEmptyFields, createErrorResponse } from "../lib/response.js";
+import {
+  processPositionWithOpposition,
+  filterZeroSharePositions,
+  formatShares,
+} from "../lib/position-utils.js";
 
 // Define the parameters schema
 const parameters = z.object({
@@ -15,20 +16,20 @@ const parameters = z.object({
     .string()
     .min(1)
     .describe(
-      'The account id of the account to find the outgoing edges for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b'
+      "The account id of the account to find the outgoing edges for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b",
     ),
   edges_predicate: z
     .string()
     .min(1)
     .describe(
-      'The predicate to filter on for outgoing edges. Example: follow, like, dislike, recommend, trust'
+      "The predicate to filter on for outgoing edges. Example: follow, like, dislike, recommend, trust",
     ),
   edges_edges_predicate: z
     .string()
     .min(1)
     .describe(
       `Optional predicate to filter nested edges on.
-Example: recommend, follow, like, dislike, trust`
+Example: recommend, follow, like, dislike, trust`,
     )
     .optional(),
 });
@@ -321,7 +322,7 @@ interface FormattedOutgoingEdgesQueryResponse {
 function formatResponse(
   result: GetOutgoingEdgesQueryResponse,
   sourceAccount: string,
-  nestedResults?: { [accountId: string]: any[] }
+  nestedResults?: { [accountId: string]: any[] },
 ): FormattedOutgoingEdgesQueryResponse {
   const formattedResult: FormattedOutgoingEdgesQueryResponse = {
     source_account: sourceAccount,
@@ -329,11 +330,17 @@ function formatResponse(
   };
 
   for (const position of result.positions) {
-    const processedPosition = processPositionWithOpposition(position, position.account.id);
-    if (processedPosition && processedPosition.type === 'relationship_position') {
+    const processedPosition = processPositionWithOpposition(
+      position,
+      position.account.id,
+    );
+    if (
+      processedPosition &&
+      processedPosition.type === "relationship_position"
+    ) {
       const targetAccountId = position.term.triple.object.value?.account?.id;
       const nestedInterests = nestedResults?.[targetAccountId] || [];
-      
+
       const edge = {
         id: targetAccountId || position.term.triple.object.term_id,
         label: position.term.triple.object.label,
@@ -373,7 +380,7 @@ Also optionally retrieves nested relationships for discovered connections.
   parameters,
   async execute(args) {
     try {
-      console.log('\n=== Getting Outgoing Edges ===');
+      console.log("\n=== Getting Outgoing Edges ===");
 
       const address = args.account_id;
       const edgesPredicate = args.edges_predicate;
@@ -404,12 +411,12 @@ Also optionally retrieves nested relationships for discovered connections.
             },
           },
           shares: {
-            _gt: '0',
+            _gt: "0",
           },
         },
         orderBy: [
           {
-            shares: 'desc',
+            shares: "desc",
           },
         ],
         limit: 50,
@@ -421,47 +428,55 @@ Also optionally retrieves nested relationships for discovered connections.
       let nestedResults: { [accountId: string]: any[] } = {};
 
       // If nested predicate is specified, get nested relationships
-      if (edgesEdgesPredicate && edgesEdgesPredicate !== '') {
+      if (edgesEdgesPredicate && edgesEdgesPredicate !== "") {
         const accountIds = filteredPositions
-          .map(pos => pos.term.triple.object.value?.account?.id)
-          .filter(id => id)
+          .map((pos) => pos.term.triple.object.value?.account?.id)
+          .filter((id) => id)
           .slice(0, 10); // Limit to first 10 to avoid too many requests
 
         await Promise.all(
           accountIds.map(async (accountId) => {
             if (!accountId) return;
-            
+
             try {
-              const nestedResult = (await client.request(getNestedOutgoingEdgesQuery, {
-                where: {
-                  account_id: {
-                    _eq: accountId,
-                  },
-                  term: {
-                    triple: {
-                      predicate: {
-                        label: {
-                          _ilike: `%${edgesEdgesPredicate}%`,
+              const nestedResult = (await client.request(
+                getNestedOutgoingEdgesQuery,
+                {
+                  where: {
+                    account_id: {
+                      _eq: accountId,
+                    },
+                    term: {
+                      triple: {
+                        predicate: {
+                          label: {
+                            _ilike: `%${edgesEdgesPredicate}%`,
+                          },
                         },
                       },
                     },
+                    shares: {
+                      _gt: "0",
+                    },
                   },
-                  shares: {
-                    _gt: '0',
-                  },
+                  orderBy: [
+                    {
+                      shares: "desc",
+                    },
+                  ],
+                  limit: 10,
                 },
-                orderBy: [
-                  {
-                    shares: 'desc',
-                  },
-                ],
-                limit: 10,
-              })) as GetOutgoingEdgesQueryResponse;
+              )) as GetOutgoingEdgesQueryResponse;
 
-              nestedResults[accountId] = filterZeroSharePositions(nestedResult.positions)
-                .map(pos => {
-                  const processed = processPositionWithOpposition(pos, accountId);
-                  if (processed && processed.type === 'relationship_position') {
+              nestedResults[accountId] = filterZeroSharePositions(
+                nestedResult.positions,
+              )
+                .map((pos) => {
+                  const processed = processPositionWithOpposition(
+                    pos,
+                    accountId,
+                  );
+                  if (processed && processed.type === "relationship_position") {
                     return {
                       relationship: processed.human_readable,
                       shares: processed.shares,
@@ -470,28 +485,31 @@ Also optionally retrieves nested relationships for discovered connections.
                   }
                   return null;
                 })
-                .filter(item => item !== null);
+                .filter((item) => item !== null);
             } catch (error) {
-              console.warn(`Failed to get nested edges for ${accountId}:`, error);
+              console.warn(
+                `Failed to get nested edges for ${accountId}:`,
+                error,
+              );
               nestedResults[accountId] = [];
             }
-          })
+          }),
         );
       }
 
       const formattedResult = formatResponse(
         { positions: filteredPositions },
         address,
-        nestedResults
+        nestedResults,
       );
 
       // Return in MCP format
       const response: CallToolResult = {
         content: [
           {
-            type: 'resource',
+            type: "resource",
             resource: {
-              uri: 'get-outgoing-edges-result',
+              uri: "get-outgoing-edges-result",
               text: JSON.stringify({
                 source_account: address,
                 predicate_filter: edgesPredicate,
@@ -499,41 +517,46 @@ Also optionally retrieves nested relationships for discovered connections.
                 outgoing_edges: formattedResult.outgoing_edges.slice(0, 10),
                 total_count: formattedResult.outgoing_edges.length,
               }),
-              mimeType: 'application/json',
+              mimeType: "application/json",
             },
           },
           {
-            type: 'text',
+            type: "text",
             text: `Outgoing Edges for ${address}:
-            
+
 **OUTGOING ${edgesPredicate.toUpperCase()} RELATIONSHIPS** (${formattedResult.outgoing_edges.length} total, top 10 shown):
 ${formattedResult.outgoing_edges
   .slice(0, 10)
   .map(
     (edge, i) =>
-      `${i + 1}. **${edge.label}** (${edge.shares} shares)
+      `${i + 1}. **${edge.label}** (${formatShares(edge.shares)} shares)
    🔗 ${edge.relationship.subject} ${edge.relationship.predicate} ${edge.relationship.object}
-   📊 Position: ${edge.position_type}${edge.opposition_metrics ? ` (${Math.round(edge.opposition_metrics.oppositionRatio * 100)}% contested)` : ''}${
-        edge.nested_interests && edge.nested_interests.length > 0
-          ? `\n   🔍 Their interests: ${edge.nested_interests.slice(0, 3).map(ni => ni.relationship).join('; ')}`
-          : ''
-      }`
+   📊 Position: ${edge.position_type}${edge.opposition_metrics ? ` (${Math.round(edge.opposition_metrics.oppositionRatio * 100)}% contested)` : ""}${
+     edge.nested_interests && edge.nested_interests.length > 0
+       ? `\n   🔍 Their interests: ${edge.nested_interests
+           .slice(0, 3)
+           .map((ni) => ni.relationship)
+           .join("; ")}`
+       : ""
+   }`,
   )
-  .join('\n\n')}
+  .join("\n\n")}
 
-📈 **Summary**: ${formattedResult.outgoing_edges.length} ${edgesPredicate} relationships${edgesEdgesPredicate ? ` with nested ${edgesEdgesPredicate} analysis` : ''}.`,
+📈 **Summary**: ${formattedResult.outgoing_edges.length} ${edgesPredicate} relationships${edgesEdgesPredicate ? ` with nested ${edgesEdgesPredicate} analysis` : ""}.`,
           },
         ],
       };
 
-      console.log('\n=== Outgoing Edges Response ===');
-      console.log(`Response size: ${JSON.stringify(response).length} characters`);
+      console.log("\n=== Outgoing Edges Response ===");
+      console.log(
+        `Response size: ${JSON.stringify(response).length} characters`,
+      );
       return response;
     } catch (error) {
       return createErrorResponse(error, {
-        operation: 'get_outgoing_edges',
+        operation: "get_outgoing_edges",
         args,
-        phase: 'execution',
+        phase: "execution",
       });
     }
   },

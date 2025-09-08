@@ -3,6 +3,39 @@
  * Based on intuition-portal's intuition-util.ts implementation
  */
 
+/**
+ * Format shares from raw BigInt string to human-readable decimal format
+ * Converts from 18-decimal precision (wei-like) to readable format
+ * @param shares Raw shares value as string (e.g., "1938000000000000000")
+ * @returns Formatted shares string (e.g., "1.938")
+ */
+export function formatShares(shares: string): string {
+  const sharesBigInt = BigInt(shares || '0');
+  if (sharesBigInt === 0n) {
+    return '0';
+  }
+  
+  // Convert from 18 decimal places to readable format
+  const divisor = BigInt('1000000000000000000'); // 10^18
+  const wholePart = sharesBigInt / divisor;
+  const fractionalPart = sharesBigInt % divisor;
+  
+  if (fractionalPart === 0n) {
+    return wholePart.toString();
+  }
+  
+  // Convert fractional part to decimal string with proper padding
+  const fractionalStr = fractionalPart.toString().padStart(18, '0');
+  // Remove trailing zeros
+  const trimmedFractional = fractionalStr.replace(/0+$/, '');
+  
+  if (trimmedFractional === '') {
+    return wholePart.toString();
+  }
+  
+  return `${wholePart}.${trimmedFractional}`;
+}
+
 export type PositionType = 'support' | 'oppose';
 
 export interface OppositionMetrics {
@@ -158,7 +191,7 @@ export function processPositionWithOpposition(
       shares,
       positionType: 'support', // Atoms don't have opposition
       vault_info: vaultInfo,
-      human_readable: `Holds position in "${position.term.atom.label}" (${shares} shares)`,
+      human_readable: `Holds position in "${position.term.atom.label}" (${formatShares(shares)} shares)`,
     };
   }
 
@@ -187,7 +220,7 @@ export function processPositionWithOpposition(
       predicate_label: triple.predicate?.label,
       human_readable: `${triple.subject?.label || 'Unknown'} ${
         triple.predicate?.label || 'relates to'
-      } ${triple.object?.label || 'Unknown'} (${shares} shares)`,
+      } ${triple.object?.label || 'Unknown'} (${formatShares(shares)} shares)`,
     };
   }
 

@@ -1,13 +1,14 @@
-import { z } from 'zod';
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { client } from '../graphql/client.js';
-import { SearchAtomsQuery } from '../graphql/generated/graphql.js';
-import { gql } from 'graphql-request';
-import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
-import { 
-  processPositionWithOpposition, 
-  filterZeroSharePositions
-} from '../lib/position-utils.js';
+import { z } from "zod";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { client } from "../graphql/client.js";
+import { SearchAtomsQuery } from "../graphql/generated/graphql.js";
+import { gql } from "graphql-request";
+import { removeEmptyFields, createErrorResponse } from "../lib/response.js";
+import {
+  processPositionWithOpposition,
+  filterZeroSharePositions,
+  formatShares,
+} from "../lib/position-utils.js";
 
 // Define the parameters schema
 const parameters = z.object({
@@ -15,14 +16,14 @@ const parameters = z.object({
     .string()
     .min(1)
     .describe(
-      'The account id of the account to find the inbound relations for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b'
+      "The account id of the account to find the inbound relations for. Example: 0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b",
     ),
   relations_predicate: z
     .string()
     .min(1)
     .describe(
       `Optional predicate to filter inbound relations on.
-Example: recommend, follow, like, dislike`
+Example: recommend, follow, like, dislike`,
     )
     .optional(),
   relations_relations_predicate: z
@@ -30,7 +31,7 @@ Example: recommend, follow, like, dislike`
     .min(1)
     .describe(
       `Optional predicate to filter nested relations on.
-Example: recommend, follow, like, dislike`
+Example: recommend, follow, like, dislike`,
     )
     .optional(),
 });
@@ -244,15 +245,21 @@ interface FormattedInboundRelationsQueryResponse {
 }
 
 function formatResponse(
-  result: GetInboundRelationsQueryResponse
+  result: GetInboundRelationsQueryResponse,
 ): FormattedInboundRelationsQueryResponse {
   const formattedResult: FormattedInboundRelationsQueryResponse = {
     inbound_relations: [],
   };
 
   for (const position of result.positions) {
-    const processedPosition = processPositionWithOpposition(position, position.account.id);
-    if (processedPosition && processedPosition.type === 'relationship_position') {
+    const processedPosition = processPositionWithOpposition(
+      position,
+      position.account.id,
+    );
+    if (
+      processedPosition &&
+      processedPosition.type === "relationship_position"
+    ) {
       const relation = {
         id: position.account.id,
         label: position.account.label,
@@ -287,10 +294,10 @@ export const getInboundRelationsOperation: GetInboundRelationsOperation = {
   parameters,
   async execute(args) {
     try {
-      console.log('\n=== Getting Inbound Relations ===');
+      console.log("\n=== Getting Inbound Relations ===");
 
       const address = args.account_id;
-      const relationsPredicate = args.relations_predicate || 'follow';
+      const relationsPredicate = args.relations_predicate || "follow";
 
       // Get positions where the object is this account (inbound relations)
       const result = (await client.request(getInboundRelationsQuery, {
@@ -314,12 +321,12 @@ export const getInboundRelationsOperation: GetInboundRelationsOperation = {
             },
           },
           shares: {
-            _gt: '0',
+            _gt: "0",
           },
         },
         orderBy: [
           {
-            shares: 'desc',
+            shares: "desc",
           },
         ],
         limit: 100,
@@ -327,53 +334,58 @@ export const getInboundRelationsOperation: GetInboundRelationsOperation = {
 
       // Filter out zero share positions
       const filteredPositions = filterZeroSharePositions(result.positions);
-      
+
       const formattedResult = formatResponse({ positions: filteredPositions });
 
       // Return in MCP format
       const response: CallToolResult = {
         content: [
           {
-            type: 'resource',
+            type: "resource",
             resource: {
-              uri: 'get-inbound-relations-result',
+              uri: "get-inbound-relations-result",
               text: JSON.stringify({
                 target_account: address,
                 predicate_filter: relationsPredicate,
-                inbound_relations: formattedResult.inbound_relations.slice(0, 10),
+                inbound_relations: formattedResult.inbound_relations.slice(
+                  0,
+                  10,
+                ),
                 total_count: formattedResult.inbound_relations.length,
               }),
-              mimeType: 'application/json',
+              mimeType: "application/json",
             },
           },
           {
-            type: 'text',
+            type: "text",
             text: `Inbound Relations for ${address}:
-            
+
 **INBOUND ${relationsPredicate.toUpperCase()} RELATIONS** (${formattedResult.inbound_relations.length} total, top 10 shown):
 ${formattedResult.inbound_relations
   .slice(0, 10)
   .map(
     (relation, i) =>
-      `${i + 1}. **${relation.label}** (${relation.shares} shares)
+      `${i + 1}. **${relation.label}** (${formatShares(relation.shares)} shares)
    🔗 ${relation.relationship.subject} ${relation.relationship.predicate} ${relation.relationship.object}
-   📊 Position: ${relation.position_type}${relation.opposition_metrics ? ` (${Math.round(relation.opposition_metrics.oppositionRatio * 100)}% contested)` : ''}`
+   📊 Position: ${relation.position_type}${relation.opposition_metrics ? ` (${Math.round(relation.opposition_metrics.oppositionRatio * 100)}% contested)` : ""}`,
   )
-  .join('\n\n')}
+  .join("\n\n")}
 
 📈 **Summary**: ${formattedResult.inbound_relations.length} accounts have ${relationsPredicate} relationships pointing to this account.`,
           },
         ],
       };
 
-      console.log('\n=== Inbound Relations Response ===');
-      console.log(`Response size: ${JSON.stringify(response).length} characters`);
+      console.log("\n=== Inbound Relations Response ===");
+      console.log(
+        `Response size: ${JSON.stringify(response).length} characters`,
+      );
       return response;
     } catch (error) {
       return createErrorResponse(error, {
-        operation: 'get_inbound_relations',
+        operation: "get_inbound_relations",
         args,
-        phase: 'execution',
+        phase: "execution",
       });
     }
   },

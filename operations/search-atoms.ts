@@ -4,6 +4,49 @@ import { client } from '../graphql/client.js';
 import { SearchAtomsQuery } from '../graphql/generated/graphql.js';
 import { gql } from 'graphql-request';
 import { removeEmptyFields, createErrorResponse } from '../lib/response.js';
+import { formatShares } from '../lib/position-utils.js';
+
+/**
+ * Format all shares-related fields in atom search results
+ * Recursively processes the nested data structure to format total_shares
+ */
+function formatAtomShares(atom: any): any {
+  if (!atom) return atom;
+
+  // Create a deep copy to avoid mutating the original
+  const formatted = JSON.parse(JSON.stringify(atom));
+
+  // Format shares in term.vaults
+  if (formatted.term?.vaults) {
+    formatted.term.vaults = formatted.term.vaults.map((vault: any) => ({
+      ...vault,
+      total_shares: vault.total_shares ? formatShares(vault.total_shares) : vault.total_shares,
+    }));
+  }
+
+  // Format shares in as_subject_triples
+  if (formatted.as_subject_triples) {
+    formatted.as_subject_triples = formatted.as_subject_triples.map((triple: any) => ({
+      ...triple,
+      term: triple.term?.vaults ? {
+        ...triple.term,
+        vaults: triple.term.vaults.map((vault: any) => ({
+          ...vault,
+          total_shares: vault.total_shares ? formatShares(vault.total_shares) : vault.total_shares,
+        })),
+      } : triple.term,
+      counter_term: triple.counter_term?.vaults ? {
+        ...triple.counter_term,
+        vaults: triple.counter_term.vaults.map((vault: any) => ({
+          ...vault,
+          total_shares: vault.total_shares ? formatShares(vault.total_shares) : vault.total_shares,
+        })),
+      } : triple.counter_term,
+    }));
+  }
+
+  return formatted;
+}
 
 // Define the parameters schema
 const parameters = z.object({
@@ -206,16 +249,44 @@ When replying to the user using the tool call result:
     console.log('\n=== Starting Atom Search Operation ===');
     console.log('Search string:', args.queries);
 
+    // Expand search queries to include both ENS names and wallet addresses
+    let expandedQueries = [...args.queries];
+    for (const query of args.queries) {
+      // If it looks like a wallet address, also try to find associated ENS names via account lookup
+      if (query.match(/^0x[a-fA-F0-9]{40}$/)) {
+        try {
+          console.log(`\n=== Resolving ENS for address ${query} ===`);
+          // Try to find an account with this address that might have an ENS label
+          const accountQuery = gql`
+            query FindAccountByAddress($address: String!) {
+              account(id: $address) {
+                label
+              }
+            }
+          `;
+          const accountResult = await client.request(accountQuery, { address: query.toLowerCase() }) as { account: { label?: string } | null };
+          if (accountResult.account?.label && accountResult.account.label !== query) {
+            expandedQueries.push(accountResult.account.label);
+            console.log(`Found ENS name for address ${query}: ${accountResult.account.label}`);
+          }
+        } catch (error) {
+          console.log(`Could not resolve ENS for address ${query}:`, error);
+        }
+      }
+    }
+
+    console.log('Expanded search queries:', expandedQueries);
+
     try {
       console.log('\n=== Calling GraphQL Search ===');
 
-      const queryArgs = args.queries.slice(0, 5);
+      const queryArgs = expandedQueries.slice(0, 5);
       const query = SEARCH_ATOMS(queryArgs);
       console.log(query);
 
       const vars: { [type: string]: string } = {};
-      for (let i = 0; i < args.queries.length; i++) {
-        vars[`like${i}Str`] = `%${args.queries[i]}`;
+      for (let i = 0; i < expandedQueries.length; i++) {
+        vars[`like${i}Str`] = `%${expandedQueries[i]}`;
       }
       const { atoms } = (await client.request(query, vars)) as SearchAtomsQuery;
       // const sdk = getSdk(client);
@@ -254,7 +325,7 @@ When replying to the user using the tool call result:
           // Limit relationships to prevent token overflow
           const limitedTriples = (atom.as_subject_triples || []).slice(0, 10);
 
-          return {
+          const atomWithLimitedTriples = {
             term_id: atom.term_id,
             label: atom.label,
             image: atom.image,
@@ -264,6 +335,9 @@ When replying to the user using the tool call result:
             term: atom.term,
             as_subject_triples: limitedTriples,
           };
+
+          // Format all shares values before returning
+          return formatAtomShares(atomWithLimitedTriples);
         });
 
       // Return in MCP format - raw JSON like the old version

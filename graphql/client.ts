@@ -2,7 +2,7 @@ import { GraphQLClient } from "graphql-request";
 
 const graphqlUrl =
   process.env.INTUITION_GRAPHQL_URL ||
-  "https://testnet.c.intuition.sh/v1/graphql";
+  "https://testnet.next.intuition.sh/v1/graphql";
 
 const TIMEOUT_MS = 30000; // 30 seconds
 const CACHE_TTL = 60000; // Cache for 1 minute

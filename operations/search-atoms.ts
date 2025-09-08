@@ -16,11 +16,23 @@ function formatAtomShares(atom: any): any {
   // Create a deep copy to avoid mutating the original
   const formatted = JSON.parse(JSON.stringify(atom));
 
-  // Format shares in term.vaults
+  // Format all BigInt values in term
+  if (formatted.term) {
+    if (formatted.term.total_market_cap) {
+      formatted.term.total_market_cap = formatShares(formatted.term.total_market_cap);
+    }
+    // Remove confusing total_assets
+    delete formatted.term.total_assets;
+  }
+
+  // Format shares and other BigInt values in term.vaults
   if (formatted.term?.vaults) {
     formatted.term.vaults = formatted.term.vaults.map((vault: any) => ({
-      ...vault,
-      total_shares: vault.total_shares ? formatShares(vault.total_shares) : vault.total_shares,
+      curve_id: vault.curve_id,
+      term_id: vault.term_id,
+      market_cap: vault.market_cap ? formatShares(vault.market_cap) : vault.market_cap,
+      // Remove confusing technical metrics
+      // total_shares, position_count, current_share_price, total_assets excluded
     }));
   }
 
@@ -30,16 +42,24 @@ function formatAtomShares(atom: any): any {
       ...triple,
       term: triple.term?.vaults ? {
         ...triple.term,
+        total_market_cap: triple.term.total_market_cap ? formatShares(triple.term.total_market_cap) : triple.term.total_market_cap,
         vaults: triple.term.vaults.map((vault: any) => ({
-          ...vault,
-          total_shares: vault.total_shares ? formatShares(vault.total_shares) : vault.total_shares,
+          curve_id: vault.curve_id,
+          term_id: vault.term_id,
+          market_cap: vault.market_cap ? formatShares(vault.market_cap) : vault.market_cap,
+          // Remove confusing technical metrics
+          // total_shares excluded
         })),
       } : triple.term,
       counter_term: triple.counter_term?.vaults ? {
         ...triple.counter_term,
+        total_market_cap: triple.counter_term.total_market_cap ? formatShares(triple.counter_term.total_market_cap) : triple.counter_term.total_market_cap,
         vaults: triple.counter_term.vaults.map((vault: any) => ({
-          ...vault,
-          total_shares: vault.total_shares ? formatShares(vault.total_shares) : vault.total_shares,
+          curve_id: vault.curve_id,
+          term_id: vault.term_id,
+          market_cap: vault.market_cap ? formatShares(vault.market_cap) : vault.market_cap,
+          // Remove confusing technical metrics
+          // total_shares excluded
         })),
       } : triple.counter_term,
     }));

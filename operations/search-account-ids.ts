@@ -34,16 +34,7 @@ const searchAccountIdsQuery = gql`
 `;
 
 export const searchAccountIdsOperation: SearchAccountIdsOperation = {
-  description: `Search account address for a given identifier.
-
-## Example:
-
-- user: what are intuitionbilly users he follows liking?
-  tool_args: {"identifier":"intuitionbilly"}
-
-- user: what is the address of vitalik.eth account?
-  tool_args: {"identifier":"vitalik.eth"}
-`,
+  description: `Search for account addresses by ENS name or identifier. Returns the wallet address for the given identifier.`,
   parameters,
   async execute(args) {
     const context: ErrorContext = {

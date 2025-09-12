@@ -242,23 +242,7 @@ function formatResponse(
 }
 
 export const getFollowingOperation: GetFollowingOperation = {
-  description: `Get detailed information about accounts that a given address is following and their relationships.
-
-This tool finds what accounts the specified address is following and then discovers what relationships/activities those followed accounts have (what they follow, recommend, like, etc.). This provides rich social context about the following network and shared interests.
-
-## Example:
-
-- user: what do the accounts I follow do?
-  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
-
-- user: what do the accounts I follow recommend?
-  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"recommend"}
-
-- user: show me the activity patterns of accounts I follow
-  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
-
-The results include detailed relationship patterns of followed accounts, providing insights into the social graph and discovery of new interesting connections.
-`,
+  description: `Get accounts that a given address is following and their relationships. Returns followed accounts with their activities and connections for social graph analysis.`,
   parameters,
   async execute(args) {
     try {

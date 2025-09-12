@@ -123,47 +123,7 @@ interface GetAccountInfoOperation {
 }
 
 export const getAccountInfoOperation: GetAccountInfoOperation = {
-  description: `Get detailed information about an account by address or identifier, including their relationships, claims, and positions.
-
-The tool will return:
-- Basic account info (label, image, type)
-- Claims/Relationships: All the semantic triples showing how this account relates to other entities (e.g., "I follow tibortheman.eth", "Account has tag Bullish")
-- Financial Positions: Their investments/stakes in various atoms and triples, sorted by largest positions first
-- Atoms: Individual concepts they're associated with
-
-**IMPORTANT**: For the most comprehensive results, after getting account info, you should also call search_atoms with the account identifier/label to discover additional relationships and detailed semantic connections that might not be captured in the direct account query. This will reveal rich "as_subject_triples" data showing all the ways this account relates to other entities.
-
-If you don't find information about the account you can search atoms instead if the identifier is not a hex address.
-
-### Examples
-Examples of cases when to use the tool to assist the user and the arguments to extract:
-
-- user_message: "get the account info for 0x1234567890123456789012345678901234567890"
-  tool_args: {"identifier":"0x1234567890123456789012345678901234567890"}
-
-- user_message: "can you show me some info for 0xabcdef0123456789abcdef0123456789abcdef01"
-  tool_args: {"identifier":"0xabcdef0123456789abcdef0123456789abcdef01"}
-
-- user_message: "what do you know about 0x1234567890123456789012345678901234567890"
-  tool_args: {"identifier":"0x1234567890123456789012345678901234567890"}
-
-- user_message: "what's the intuition of 0x1234567890123456789012345678901234567890"
-  tool_args: {"identifier":"0x1234567890123456789012345678901234567890"}
-
-- user_message: "show me the relationships for jonathanprozzi.eth"
-  tool_args: {"identifier":"jonathanprozzi.eth"}
-
-### Response format
-
-When replying to the user using the tool call result:
-- Highlight the most significant relationships/claims first
-- Show financial positions sorted by largest stakes
-- Mention specific atom/triple IDs when relevant
-- Focus on social connections (follows, tags, preferences)
-- Provide at least 10 connections and detailed insights
-- Structure your reply naturally and engagingly
-- **RECOMMENDED**: After getting account info, make a follow-up search_atoms call with the account label/identifier to discover additional rich relationship data and provide the most comprehensive response possible
-`,
+  description: `Get account information by address or ENS identifier. Returns account details, relationships/claims (semantic triples), financial positions, and associated atoms.`,
   parameters,
   async execute(args) {
     console.log("\n=== Starting Get Account Info Operation ===");

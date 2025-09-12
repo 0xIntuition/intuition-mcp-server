@@ -19,32 +19,7 @@ interface SearchListsOperation {
 }
 
 export const searchListsOperation: SearchListsOperation = {
-  description: `Search for lists of entities by name or description.
-
-Do not hesitate to make multiple calls arguments broken down to single word or other variations when the arguments from the user is complex.
-
-### Examples
-Examples of cases when to use the tool to assist the user and the arguments to extract:
-
-- user_message: give me a list of blockchains
-  tool_args: {"query":"blockchain"}
-
-- user_message: I'm looking for a list of crypto ceos
-  tool_args: {"query":"crypto ceos"}
-
-- user_message: do you have information about important policitians
-  tool_args: {"query":"politicians"}
-
-- user_message: do you have a collection about web3
-  tool_args: {"query":"web3"}
-
-- user_message: what are some popular defi protocols
-  tool_args: {"query":"defi protocols"}
-
-### Response format
-
-When replying to the user using the tool call result give at least 10 items if there is at least 10 items in the result. Sort the items by position descending. Always mention the atom ids. Give a good amount of details. Structure your reply but keep a natural and engaging format and follow the other speech directives.
-`,
+  description: `Search for curated lists of entities by name or topic. Returns lists with their items sorted by relevance.`,
   parameters,
   async execute(args) {
     console.log('\n=== Starting Search Lists Operation ===');

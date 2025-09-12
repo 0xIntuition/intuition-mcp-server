@@ -209,61 +209,7 @@ export const SEARCH_ATOMS = function (params: string[]) {
 };
 
 export const atomSearchOperation: AtomSearchOperation = {
-  description: `Search for accounts, things, people, and concepts by name, description, URL or ens domain (e.g. john.eth).
-
-This tool is particularly powerful for discovering detailed relationships and semantic connections. When you search for an account or entity, it returns not just basic info but also rich "as_subject_triples" data showing all the relationships where this entity is the subject (e.g., "Account follows Person", "Account has tag Concept", "Account loves Protocol").
-
-The search results include:
-- Basic entity information (name, type, description)
-- Financial data (market cap, shares, positions)
-- **Rich relationship data**: All the semantic triples showing how this entity relates to others
-- Human-readable relationship descriptions for easy interpretation
-
-**Perfect for**: Getting comprehensive relationship profiles for accounts, discovering social connections, finding tagged entities, and understanding semantic relationships in the knowledge graph.
-
-Use the user input with synonyms or break it down into single words for arguments.
-
-### Examples
-Examples of cases when to use the tool to assist the user and the arguments to extract:
-
-- user_message: search atoms for ethereum
-  tool_args: {"queries":["ethereum","eth"]}
-
-- user_message: search for data about intuition
-  tool_args: {"queries":["intuition"]}
-
-- user_message: what information you have about centralized exchanges
-  tool_args: {"queries":["centralized exchanges","cex"]}
-
-- user_message: what's in intuition about ethereum
-  tool_args: {"queries":["ethereum","eth"]}
-
-- user_message: find atoms for vitalik buterin
-  tool_args: {"queries":["vitalik buterin","vitalik.eth","vitalik"]}
-
-- user_message: tell me what you know about blockchains
-  tool_args: {"queries":["blockchain"]}
-
-- user_message: what connection does he have to vitalik
-  tool_args: {"queries":["vitalik","vitalik.eth","vitalik buterin"]}
-
-- user_message: do you know something about billy.eth
-  tool_args: {"queries":["billy.eth","bill","william"]}
-
-- user_message: show me detailed info about jonathanprozzi.eth
-  tool_args: {"queries":["jonathanprozzi.eth","jonathanprozzi","jonathan"]}
-
-### Response format
-
-When replying to the user using the tool call result:
-- Favor the most popular atoms (with the largest positions) and sort them by position descending
-- Always mention the atom IDs and relationship counts
-- Give at least 10 connections and detailed relationship insights
-- Structure your reply naturally and engagingly
-- Highlight social connections, preferences, and semantic relationships
-- Focus on the rich relationship data in as_subject_triples
-- Present human-readable relationship descriptions based on the predicate and object data
-`,
+  description: `Search entities (accounts, things, people, concepts) by name, description, URL, or ENS domain. Returns entity info, relationships (as_subject_triples), and financial data (market cap, shares).`,
   parameters,
   async execute(args) {
     console.log('\n=== Starting Atom Search Operation ===');

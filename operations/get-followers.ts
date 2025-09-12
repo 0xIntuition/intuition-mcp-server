@@ -243,23 +243,7 @@ function formatResponse(
 }
 
 export const getFollowersOperation: GetFollowersOperation = {
-  description: `Get followers of a given address and their detailed relationships/interactions.
-
-This tool finds accounts that follow the specified address and then discovers what relationships/predicates those followers have (what they follow, recommend, like, etc.). This provides rich social context about the follower network.
-
-## Example:
-
-- user: what do my followers follow?
-  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"follow"}
-
-- user: what do my followers recommend?
-  tool_args: {"account_id":"0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b","predicate":"recommend"}
-
-- user: what are intuitionbilly.eth followers interested in?
-  tool_args: {"account_id":"0x88d0af73508452c1a453356b3fac26525aec23a2","predicate":"follow"}
-
-The results include both the follower information and their relationship patterns, providing insights into the social graph and shared interests.
-`,
+  description: `Get followers of an address and their relationships/interactions. Returns follower accounts with their activities and connections for social network analysis.`,
   parameters,
   async execute(args) {
     try {

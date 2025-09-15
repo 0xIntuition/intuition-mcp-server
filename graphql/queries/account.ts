@@ -199,3 +199,148 @@ export const GET_ACCOUNT_INFO = gql`
     }
   }
 `;
+
+export const GET_ACCOUNT_WITH_PERSONALIZATION = gql`
+  ${AccountMetadata}
+  ${AtomValue}
+
+  query GetAccountWithPersonalization(
+    $address: String!
+    $positionsLimit: Int
+    $positionsOffset: Int
+    $personalizationPredicateIds: [String!]!
+  ) {
+    account(id: $address) {
+      ...AccountMetadata
+
+      # Personalization positions (filtered by predicate IDs)
+      personalizationPositions: positions(
+        where: {
+          shares: { _gt: "0" }
+          term: {
+            triple: {
+              predicate: { term_id: { _in: $personalizationPredicateIds } }
+            }
+          }
+        }
+        limit: 100
+        order_by: { created_at: desc }
+      ) {
+        id
+        shares
+        term {
+          vaults(where: { curve_id: { _eq: "1" } }) {
+            term_id
+            position_count
+            total_shares
+          }
+          triple {
+            term_id
+            subject {
+              term_id
+              label
+            }
+            predicate {
+              term_id
+              label
+            }
+            object {
+              term_id
+              label
+            }
+          }
+        }
+      }
+
+      # Regular positions for broader context
+      positions(
+        where: { shares: { _gt: "0" } }
+        limit: $positionsLimit
+        offset: $positionsOffset
+        order_by: { shares: desc }
+      ) {
+        id
+        shares
+        term {
+          vaults(where: { curve_id: { _eq: "1" } }) {
+            term_id
+            position_count
+            total_shares
+            current_share_price
+          }
+          atom {
+            term_id
+            label
+            value {
+              ...AtomValue
+            }
+          }
+          triple {
+            term_id
+            counter_term_id
+            subject {
+              term_id
+              label
+            }
+            predicate {
+              term_id
+              label
+            }
+            object {
+              term_id
+              label
+            }
+            # Support vault info
+            term {
+              vaults(where: { curve_id: { _eq: "1" } }) {
+                position_count
+                total_shares
+              }
+            }
+            # Counter vault info for opposition detection
+            counter_term {
+              vaults(where: { curve_id: { _eq: "1" } }) {
+                position_count
+                total_shares
+              }
+            }
+          }
+        }
+      }
+
+      # User's created atoms
+      atoms(limit: 20) {
+        term_id
+        label
+        data
+        term {
+          vaults(where: { curve_id: { _eq: "1" } }) {
+            total_shares
+            positions_aggregate(where: { account_id: { _eq: $address } }) {
+              nodes {
+                shares
+              }
+            }
+          }
+        }
+      }
+
+      # User's created triples
+      triples(limit: 20) {
+        term_id
+        subject {
+          term_id
+          label
+        }
+        predicate {
+          term_id
+          label
+        }
+        object {
+          term_id
+          label
+        }
+      }
+    }
+  }
+`;

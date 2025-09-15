@@ -20,6 +20,7 @@ import { searchListsOperation } from './operations/search-lists.js';
 import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
+import { getPersonalizationOperation } from './operations/get-personalization.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {
@@ -71,6 +72,11 @@ const TOOLS = [
     name: 'search_account_ids',
     description: searchAccountIdsOperation.description,
     inputSchema: zodToJsonSchema(searchAccountIdsOperation.parameters),
+  },
+  {
+    name: 'get_personalization',
+    description: getPersonalizationOperation.description,
+    inputSchema: zodToJsonSchema(getPersonalizationOperation.parameters),
   },
 ] as const;
 
@@ -189,6 +195,7 @@ const server = new Server(SERVER_CONFIG, {
       get_following: true,
       get_followers: true,
       search_account_ids: true,
+      get_personalization: true,
     },
   },
 });
@@ -257,6 +264,13 @@ server.setRequestHandler(
             request.params.arguments
           );
           result = await searchAccountIdsOperation.execute(args);
+          break;
+        }
+        case 'get_personalization': {
+          const args = getPersonalizationOperation.parameters.parse(
+            request.params.arguments
+          );
+          result = await getPersonalizationOperation.execute(args);
           break;
         }
         default:

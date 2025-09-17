@@ -5,7 +5,6 @@ import { getPersonalizationOperation } from "../operations/get-personalization.j
 // Define the prompt parameters schema
 const personalizationPromptParameters = z.object({
   address: z.string().describe("Ethereum wallet address for personalization"),
-  includeOpposition: z.boolean().optional().default(false).describe("Include opposition data for controversy awareness"),
   context: z.enum(["chat", "analysis", "brief"]).optional().default("chat").describe("Context for how the personalization will be used"),
 });
 
@@ -17,7 +16,7 @@ function formatPersonalizationForContext(data: any, context: string): string {
     return `This user does not have an Intuition account yet. They may be new to the platform. Suggest exploring the Intuition protocol at launchpad.intuition.systems to get started.`;
   }
 
-  const { summary, preferences, interests, identities, aiGuidance, opposition } = parsed;
+  const { summary, preferences, interests, identities, aiGuidance, opposition, atoms } = parsed;
 
   if (context === "brief") {
     // Minimal context for token efficiency
@@ -86,6 +85,16 @@ ${identities?.length > 0 ?
   'No identity markers recorded on Intuition.'
 }
 
+## 📊 YOUR POSITIONS - Projects & Concepts You Support ${atoms?.length > 0 ? `(${atoms.length})` : '(None)'}
+${atoms?.length > 0 ?
+  `INSTRUCTION: These are concrete positions representing user opinions and support. Prioritize these when answering about projects they support.
+
+${atoms.slice(0, 10).map((atom: any) =>
+  `- **${atom.label}** (${atom.shares} shares)`
+).join('\n')}` :
+  'No position data available.'
+}
+
 ${opposition?.contestedClaims?.length > 0 ? `## ⚠️ Controversial Areas
 This user has positions that face significant opposition:
 ${opposition.contestedClaims.slice(0, 3).map((c: any) =>
@@ -100,10 +109,12 @@ Be mindful of these potentially sensitive topics.` : ''}
 ${aiGuidance.hasPreferences ? '✅ **Reference their preferences** when suggesting tools, resources, or examples' : '❌ No preferences to reference'}
 ${aiGuidance.hasInterests ? '✅ **Connect to their interests** when explaining concepts or providing context' : '❌ No interests to connect with'}
 ${aiGuidance.hasIdentity ? '✅ **Acknowledge their identity/roles** when relevant to the conversation' : '❌ No identity markers to acknowledge'}
+${atoms?.length > 0 ? '✅ **Use their position data** to provide personalized recommendations about projects they support' : '❌ No position data to reference'}
 
 ### Response Strategy:
 - **Engagement Level**: ${aiGuidance.engagementLevel === 'high' ? 'They are highly active - can reference specific Intuition concepts and deeper protocol mechanics' : aiGuidance.engagementLevel === 'medium' ? 'Moderate activity - explain Intuition concepts when referenced' : 'New/low activity - introduce Intuition concepts gently if relevant'}
 ${aiGuidance.isControversial ? '- **Controversial Profile**: Be diplomatic about contested topics, acknowledge different perspectives exist' : '- **Non-controversial Profile**: Straightforward approach is fine'}
+${atoms?.length > 0 ? `- **Position-Based Context**: User has positions in ${atoms.slice(0, 3).map((a: any) => a.label).join(', ')} - prioritize these when answering about projects they support` : '- **No Positions**: User has not taken positions on specific concepts yet'}
 
 ### Link Generation:
 When referencing any concept, person, or entity mentioned in their profile, you can link to it using:
@@ -117,10 +128,10 @@ When referencing any concept, person, or entity mentioned in their profile, you 
 // Main prompt execution function
 async function executePersonalizationPrompt(args: z.infer<typeof personalizationPromptParameters>): Promise<PromptMessage[]> {
   try {
-    // Get personalization data using our existing operation
+    // Get personalization data using our existing operation (always include opposition)
     const personalizationResult = await getPersonalizationOperation.execute({
       address: args.address,
-      includeOpposition: args.includeOpposition || false,
+      includeOpposition: true, // Always include opposition data
       includePositions: true,
       limit: 100,
     });

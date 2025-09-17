@@ -252,8 +252,8 @@ async function execute(args: z.infer<typeof parameters>): Promise<CallToolResult
         communityPositions: pos.term?.vaults?.[0]?.position_count || 0,
       })),
 
-      // Top supported concepts
-      topAtoms: atoms.slice(0, 10).map(atom => ({
+      // Regular atoms/positions (exactly like legacy intuition-util)
+      atoms: atoms.slice(0, 10).map(atom => ({
         label: atom.label,
         termId: atom.term_id,
         shares: atom.shares,

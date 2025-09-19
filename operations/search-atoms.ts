@@ -209,7 +209,7 @@ export const SEARCH_ATOMS = function (params: string[]) {
 };
 
 export const atomSearchOperation: AtomSearchOperation = {
-  description: `Search entities (accounts, things, people, concepts) by name, description, URL, or ENS domain. Returns entity info, relationships (as_subject_triples), and financial data (market cap, shares).`,
+  description: `Search entities (accounts, things, people, concepts) by name, description, URL, or ENS domain. Returns entity info, rich relationship data (as_subject_triples), and financial data (market cap, shares). Excellent for ENS names, discovering social connections, and semantic relationships. Supports synonyms and keyword variations.`,
   parameters,
   async execute(args) {
     console.log('\n=== Starting Atom Search Operation ===');

@@ -8,6 +8,7 @@ import {
   filterZeroSharePositions,
   ProcessedPositionData,
 } from "../lib/position-utils.js";
+import { searchAccountIdsOperation } from "./search-account-ids.js";
 
 // Define the parameters schema
 const parameters = z
@@ -123,7 +124,7 @@ interface GetAccountInfoOperation {
 }
 
 export const getAccountInfoOperation: GetAccountInfoOperation = {
-  description: `Get account information by address or ENS identifier. Returns account details, relationships/claims (semantic triples), financial positions, and associated atoms.`,
+  description: `Get account information by address or identifier. Returns account details, relationships/claims (semantic triples), financial positions, and associated atoms. Works best with wallet addresses (0x...). For comprehensive ENS data, search_atoms provides richer relationship discovery.`,
   parameters,
   async execute(args) {
     console.log("\n=== Starting Get Account Info Operation ===");
@@ -134,25 +135,8 @@ export const getAccountInfoOperation: GetAccountInfoOperation = {
     if (address && address.startsWith("0x")) {
       address = address.toLowerCase();
     } else if (address && address.includes(".eth")) {
-      // For ENS names, we need to resolve to the wallet address
-      // First try the ENS name directly in the account query
-      console.log("ENS name detected:", address);
-      try {
-        console.log("\n=== Trying ENS Resolution via GraphQL ===");
-        const sdk = getSdk(client);
-        const { account: ensAccount } = await sdk.GetAccountInfo({
-          address: address,
-        });
-
-        if (ensAccount && ensAccount.id && ensAccount.id.startsWith("0x")) {
-          // Found account, use the resolved wallet address for position queries
-          const walletAddress = ensAccount.id.toLowerCase();
-          console.log("Resolved ENS to wallet address:", walletAddress);
-          address = walletAddress;
-        }
-      } catch (error) {
-        console.log("ENS resolution failed, will use original address:", error);
-      }
+      // For ENS names, log but continue - the tool description guides Claude to use search_atoms
+      console.log("ENS name detected:", address, "- Claude should prefer search_atoms for ENS");
     }
 
     console.log("Final address for queries:", address);

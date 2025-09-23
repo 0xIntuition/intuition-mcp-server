@@ -9,6 +9,11 @@ import {
   ListToolsRequestSchema,
   CallToolRequest,
   CallToolResult,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
+  GetPromptRequest,
+  PromptMessage,
+  TextContent,
 } from '@modelcontextprotocol/sdk/types.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { performance } from 'perf_hooks';
@@ -20,6 +25,8 @@ import { searchListsOperation } from './operations/search-lists.js';
 import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
+import { getPersonalizationOperation } from './operations/get-personalization.js';
+import { personalizationPrompt } from './prompts/personalization-prompt.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {
@@ -71,6 +78,11 @@ const TOOLS = [
     name: 'search_account_ids',
     description: searchAccountIdsOperation.description,
     inputSchema: zodToJsonSchema(searchAccountIdsOperation.parameters),
+  },
+  {
+    name: 'get_personalization',
+    description: getPersonalizationOperation.description,
+    inputSchema: zodToJsonSchema(getPersonalizationOperation.parameters),
   },
 ] as const;
 
@@ -189,6 +201,10 @@ const server = new Server(SERVER_CONFIG, {
       get_following: true,
       get_followers: true,
       search_account_ids: true,
+      get_personalization: true,
+    },
+    prompts: {
+      personalization_context: true,
     },
   },
 });
@@ -259,6 +275,13 @@ server.setRequestHandler(
           result = await searchAccountIdsOperation.execute(args);
           break;
         }
+        case 'get_personalization': {
+          const args = getPersonalizationOperation.parameters.parse(
+            request.params.arguments
+          );
+          result = await getPersonalizationOperation.execute(args);
+          break;
+        }
         default:
           throw new Error(`Unknown tool: ${request.params.name}`);
       }
@@ -298,6 +321,65 @@ server.setRequestHandler(
         ],
         isError: true,
       };
+    }
+  }
+);
+
+// Set up prompt handlers
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  return {
+    prompts: [
+      {
+        name: personalizationPrompt.name,
+        description: personalizationPrompt.description,
+        arguments: zodToJsonSchema(personalizationPrompt.parameters),
+      },
+    ],
+  };
+});
+
+server.setRequestHandler(
+  GetPromptRequestSchema,
+  async (request: GetPromptRequest) => {
+    const startTime = performance.now();
+    console.log(
+      `[Prompt Call Start] Prompt: ${request.params.name} Args:`,
+      JSON.stringify(request.params.arguments, null, 2)
+    );
+
+    try {
+      switch (request.params.name) {
+        case 'personalization_context': {
+          const args = personalizationPrompt.parameters.parse(
+            request.params.arguments
+          );
+          const messages = await personalizationPrompt.execute(args);
+
+          const duration = performance.now() - startTime;
+          console.log(
+            `[Prompt Call Success] Prompt: ${
+              request.params.name
+            } Duration: ${duration.toFixed(2)}ms`
+          );
+
+          return {
+            description: `Personalization context for wallet ${args.address}`,
+            messages,
+          };
+        }
+        default:
+          throw new Error(`Unknown prompt: ${request.params.name}`);
+      }
+    } catch (error) {
+      const duration = performance.now() - startTime;
+      console.error(
+        `[Prompt Call Error] Prompt: ${
+          request.params.name
+        } Duration: ${duration.toFixed(2)}ms`
+      );
+      console.error('Error details:', error);
+
+      throw error; // Let MCP SDK handle prompt errors
     }
   }
 );

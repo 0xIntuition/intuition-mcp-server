@@ -11343,6 +11343,16 @@ export type GetAccountInfoQueryVariables = Exact<{
 
 export type GetAccountInfoQuery = { account?: { label: string, image?: string | null, id: string, atom_id?: string | null, type: any, atoms: Array<{ term_id: string, label?: string | null, data?: string | null, value?: { thing?: { description?: string | null } | null } | null, term: { vaults: Array<{ total_shares: string, positions_aggregate: { nodes: Array<{ shares: string, account?: { id: string } | null }> } }> } }>, triples: Array<{ term_id: string, subject: { term_id: string, label?: string | null, value?: { thing?: { id: string, image?: string | null, description?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null, person?: { id: string, image?: string | null, description?: string | null } | null, organization?: { id: string, image?: string | null, description?: string | null } | null } | null }, predicate: { term_id: string, label?: string | null, value?: { thing?: { id: string, image?: string | null, description?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null, person?: { id: string, image?: string | null, description?: string | null } | null, organization?: { id: string, image?: string | null, description?: string | null } | null } | null }, object: { term_id: string, label?: string | null, value?: { thing?: { id: string, image?: string | null, description?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null, person?: { id: string, image?: string | null, description?: string | null } | null, organization?: { id: string, image?: string | null, description?: string | null } | null } | null } }>, positions: Array<{ id: string, shares: string, term: { vaults: Array<{ term_id: string, position_count: number, total_shares: string, current_share_price: string }>, atom?: { term_id: string, label?: string | null, image?: string | null, value?: { person?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, thing?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, organization?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null } | null } | null, triple?: { term_id: string, counter_term_id: string, subject: { term_id: string, label?: string | null, value?: { person?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, thing?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, organization?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null } | null }, predicate: { term_id: string, label?: string | null, value?: { person?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, thing?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, organization?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null } | null }, object: { term_id: string, label?: string | null, value?: { person?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, thing?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, organization?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null } | null }, term?: { vaults: Array<{ term_id: string, position_count: number, total_shares: string, current_share_price: string, userPosition: Array<{ shares: string, account_id: string }> }> } | null, counter_term?: { vaults: Array<{ term_id: string, position_count: number, total_shares: string, current_share_price: string, userPosition: Array<{ shares: string, account_id: string }> }> } | null } | null } }> } | null };
 
+export type GetAccountWithPersonalizationQueryVariables = Exact<{
+  address: Scalars['String']['input'];
+  positionsLimit?: InputMaybe<Scalars['Int']['input']>;
+  positionsOffset?: InputMaybe<Scalars['Int']['input']>;
+  personalizationPredicateIds: Array<Scalars['String']['input']> | Scalars['String']['input'];
+}>;
+
+
+export type GetAccountWithPersonalizationQuery = { account?: { label: string, image?: string | null, id: string, atom_id?: string | null, type: any, personalizationPositions: Array<{ id: string, shares: string, term: { vaults: Array<{ term_id: string, position_count: number, total_shares: string }>, triple?: { term_id: string, subject: { term_id: string, label?: string | null }, predicate: { term_id: string, label?: string | null }, object: { term_id: string, label?: string | null } } | null } }>, positions: Array<{ id: string, shares: string, term: { vaults: Array<{ term_id: string, position_count: number, total_shares: string, current_share_price: string }>, atom?: { term_id: string, label?: string | null, value?: { person?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, thing?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, organization?: { name?: string | null, image?: string | null, description?: string | null, url?: string | null } | null, account?: { id: string, label: string, image?: string | null } | null } | null } | null, triple?: { term_id: string, counter_term_id: string, subject: { term_id: string, label?: string | null }, predicate: { term_id: string, label?: string | null }, object: { term_id: string, label?: string | null }, term?: { vaults: Array<{ position_count: number, total_shares: string }> } | null, counter_term?: { vaults: Array<{ position_count: number, total_shares: string }> } | null } | null } }>, atoms: Array<{ term_id: string, label?: string | null, data?: string | null, term: { vaults: Array<{ total_shares: string, positions_aggregate: { nodes: Array<{ shares: string }> } }> } }>, triples: Array<{ term_id: string, subject: { term_id: string, label?: string | null }, predicate: { term_id: string, label?: string | null }, object: { term_id: string, label?: string | null } }> } | null };
+
 export type SearchAtomsQueryVariables = Exact<{
   likeStr: Scalars['String']['input'];
 }>;
@@ -11574,6 +11584,126 @@ export const GetAccountInfoDocument = gql`
 }
     ${AccountMetadataFragmentDoc}
 ${AtomValueFragmentDoc}`;
+export const GetAccountWithPersonalizationDocument = gql`
+    query GetAccountWithPersonalization($address: String!, $positionsLimit: Int, $positionsOffset: Int, $personalizationPredicateIds: [String!]!) {
+  account(id: $address) {
+    ...AccountMetadata
+    personalizationPositions: positions(
+      where: {shares: {_gt: "0"}, term: {triple: {predicate: {term_id: {_in: $personalizationPredicateIds}}}}}
+      limit: 100
+      order_by: {created_at: desc}
+    ) {
+      id
+      shares
+      term {
+        vaults(where: {curve_id: {_eq: "1"}}) {
+          term_id
+          position_count
+          total_shares
+        }
+        triple {
+          term_id
+          subject {
+            term_id
+            label
+          }
+          predicate {
+            term_id
+            label
+          }
+          object {
+            term_id
+            label
+          }
+        }
+      }
+    }
+    positions(
+      where: {shares: {_gt: "0"}}
+      limit: $positionsLimit
+      offset: $positionsOffset
+      order_by: {shares: desc}
+    ) {
+      id
+      shares
+      term {
+        vaults(where: {curve_id: {_eq: "1"}}) {
+          term_id
+          position_count
+          total_shares
+          current_share_price
+        }
+        atom {
+          term_id
+          label
+          value {
+            ...AtomValue
+          }
+        }
+        triple {
+          term_id
+          counter_term_id
+          subject {
+            term_id
+            label
+          }
+          predicate {
+            term_id
+            label
+          }
+          object {
+            term_id
+            label
+          }
+          term {
+            vaults(where: {curve_id: {_eq: "1"}}) {
+              position_count
+              total_shares
+            }
+          }
+          counter_term {
+            vaults(where: {curve_id: {_eq: "1"}}) {
+              position_count
+              total_shares
+            }
+          }
+        }
+      }
+    }
+    atoms(limit: 20) {
+      term_id
+      label
+      data
+      term {
+        vaults(where: {curve_id: {_eq: "1"}}) {
+          total_shares
+          positions_aggregate(where: {account_id: {_eq: $address}}) {
+            nodes {
+              shares
+            }
+          }
+        }
+      }
+    }
+    triples(limit: 20) {
+      term_id
+      subject {
+        term_id
+        label
+      }
+      predicate {
+        term_id
+        label
+      }
+      object {
+        term_id
+        label
+      }
+    }
+  }
+}
+    ${AccountMetadataFragmentDoc}
+${AtomValueFragmentDoc}`;
 export const SearchAtomsDocument = gql`
     query SearchAtoms($likeStr: String!) {
   atoms(
@@ -11733,6 +11863,9 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
   return {
     GetAccountInfo(variables: GetAccountInfoQueryVariables, requestHeaders?: GraphQLClientRequestHeaders): Promise<GetAccountInfoQuery> {
       return withWrapper((wrappedRequestHeaders) => client.request<GetAccountInfoQuery>(GetAccountInfoDocument, variables, {...requestHeaders, ...wrappedRequestHeaders}), 'GetAccountInfo', 'query', variables);
+    },
+    GetAccountWithPersonalization(variables: GetAccountWithPersonalizationQueryVariables, requestHeaders?: GraphQLClientRequestHeaders): Promise<GetAccountWithPersonalizationQuery> {
+      return withWrapper((wrappedRequestHeaders) => client.request<GetAccountWithPersonalizationQuery>(GetAccountWithPersonalizationDocument, variables, {...requestHeaders, ...wrappedRequestHeaders}), 'GetAccountWithPersonalization', 'query', variables);
     },
     SearchAtoms(variables: SearchAtomsQueryVariables, requestHeaders?: GraphQLClientRequestHeaders): Promise<SearchAtomsQuery> {
       return withWrapper((wrappedRequestHeaders) => client.request<SearchAtomsQuery>(SearchAtomsDocument, variables, {...requestHeaders, ...wrappedRequestHeaders}), 'SearchAtoms', 'query', variables);

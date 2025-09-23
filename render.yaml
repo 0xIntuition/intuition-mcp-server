@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: intuition-mcp-server
+    name: intuition-mcp-server-next
     env: docker
     region: oregon
     plan: starter

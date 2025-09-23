@@ -1,6 +1,6 @@
 {
   "name": "@0xintuition/mcp-server",
-  "version": "0.9.0",
+  "version": "0.10.0-next.1",
   "description": "MCP server for interacting with the Intuition knowledge graph.",
   "license": "MIT",
   "author": "@0xintuition",

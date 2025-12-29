@@ -8,6 +8,7 @@ This repository represents the evolution of our Intuition MCP Server, which we a
 
 - [Intuition MCP Server](#intuition-mcp-server)
   - [Table of Contents](#table-of-contents)
+  - [Quick Start](#quick-start)
   - [Get Started](#get-started)
   - [Overview](#overview)
   - [Tools](#tools)
@@ -27,6 +28,59 @@ This repository represents the evolution of our Intuition MCP Server, which we a
   - [Deployment](#deployment)
   - [Contributing](#contributing)
   - [License](#license)
+
+## Quick Start
+
+### Using npx (Recommended)
+
+The fastest way to use Intuition MCP Server with Claude Desktop or other MCP clients:
+
+Add this to your Claude Desktop config (`claude_desktop_config.json`):
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "intuition": {
+      "command": "npx",
+      "args": ["-y", "@0xintuition/mcp-server"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop and you're ready to query the Intuition knowledge graph!
+
+### Using Cursor
+
+Add to your Cursor MCP settings (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "intuition": {
+      "command": "npx",
+      "args": ["-y", "@0xintuition/mcp-server"]
+    }
+  }
+}
+```
+
+### Using HTTP Transport (for remote connections)
+
+If you need to connect to a hosted instance:
+
+```json
+{
+  "mcpServers": {
+    "intuition": {
+      "url": "https://your-deployed-server.com/mcp"
+    }
+  }
+}
+```
 
 ## Get Started
 
@@ -155,16 +209,16 @@ Description: Searches for lists of entities (e.g., blockchains, crypto CEOs) by 
 
 Input Schema:
 
-json
-
+```json
 {
-"type": "object",
-"properties": {
-"query": { "type": "string", "minLength": 1 }
-},
-"required": ["query"],
-"additionalProperties": false
+  "type": "object",
+  "properties": {
+    "query": { "type": "string", "minLength": 1 }
+  },
+  "required": ["query"],
+  "additionalProperties": false
 }
+```
 
 Example:
 
@@ -355,7 +409,7 @@ The client automatically handles transport negotiation and fallback to SSE if St
 
 Use the input schema for the desired tool (e.g., {"queries": ["ethereum"]} for search_atoms).
 
-Ensure the payload matches the tool’s JSON schema to avoid errors.
+Ensure the payload matches the tool's JSON schema to avoid errors.
 
 **Send the request:**
 
@@ -404,6 +458,21 @@ await client.callTool('get_account_info', {
 This repository contains a sample `Dockerfile` that you can use to deploy to services such as [Render](https://render.com/) or any other host provider that supports Docker. The `Dockerfile` is already configured to work for deploying the project structure as is. If you make any changes to the repo structure after cloning you'll want to be sure to update this file.
 
 We've included a `render.yaml` file for the public deployment. We invite you to create your own deployment. You can utilize our existing `render.yaml` file to deploy your own Render project.
+
+## Publishing to npm
+
+To publish this package to npm (maintainers only):
+
+```bash
+# Build the project
+pnpm build
+
+# Login to npm
+npm login
+
+# Publish with public access (required for scoped packages)
+npm publish --access public
+```
 
 ## Contributing
 

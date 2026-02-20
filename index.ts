@@ -201,6 +201,8 @@ const server = new Server(SERVER_CONFIG, {
       get_following: true,
       get_followers: true,
       search_account_ids: true,
+      get_inbound_relations: true,
+      get_outgoing_edges: true,
     },
   },
 });

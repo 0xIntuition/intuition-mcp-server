@@ -194,16 +194,7 @@ const SERVER_CONFIG = {
 
 const server = new Server(SERVER_CONFIG, {
   capabilities: {
-    tools: {
-      search_atoms: true,
-      get_account_info: true,
-      search_lists: true,
-      get_following: true,
-      get_followers: true,
-      search_account_ids: true,
-      get_inbound_relations: true,
-      get_outgoing_edges: true,
-    },
+    tools: {},
   },
 });
 

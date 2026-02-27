@@ -20,6 +20,8 @@ import { searchListsOperation } from './operations/search-lists.js';
 import { getFollowingOperation } from './operations/get-following.js';
 import { getFollowersOperation } from './operations/get-followers.js';
 import { searchAccountIdsOperation } from './operations/search-account-ids.js';
+import { getInboundRelationsOperation } from './operations/get-inbound-relations.js';
+import { getOutgoingEdgesOperation } from './operations/get-outgoing-edges.js';
 
 // Configure global error handlers with detailed logging
 process.on('uncaughtException', (error) => {
@@ -71,6 +73,16 @@ const TOOLS = [
     name: 'search_account_ids',
     description: searchAccountIdsOperation.description,
     inputSchema: zodToJsonSchema(searchAccountIdsOperation.parameters),
+  },
+  {
+    name: 'get_inbound_relations',
+    description: getInboundRelationsOperation.description,
+    inputSchema: zodToJsonSchema(getInboundRelationsOperation.parameters),
+  },
+  {
+    name: 'get_outgoing_edges',
+    description: getOutgoingEdgesOperation.description,
+    inputSchema: zodToJsonSchema(getOutgoingEdgesOperation.parameters),
   },
 ] as const;
 
@@ -250,6 +262,20 @@ server.setRequestHandler(
             request.params.arguments
           );
           result = await searchAccountIdsOperation.execute(args);
+          break;
+        }
+        case 'get_inbound_relations': {
+          const args = getInboundRelationsOperation.parameters.parse(
+            request.params.arguments
+          );
+          result = await getInboundRelationsOperation.execute(args);
+          break;
+        }
+        case 'get_outgoing_edges': {
+          const args = getOutgoingEdgesOperation.parameters.parse(
+            request.params.arguments
+          );
+          result = await getOutgoingEdgesOperation.execute(args);
           break;
         }
         default:

@@ -1,0 +1,105 @@
+name: Clean install
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  clean-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Smoke test stdio tool inventory
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawn } from 'node:child_process';
+          import { strict as assert } from 'node:assert';
+
+          const expected = [
+            'search_atoms',
+            'get_account_info',
+            'search_lists',
+            'get_following',
+            'get_followers',
+            'search_account_ids',
+          ];
+          const child = spawn('pnpm', ['--silent', 'run', 'start:stdio'], {
+            stdio: ['pipe', 'pipe', 'inherit'],
+            detached: true,
+          });
+          let buffer = '';
+          const timeout = setTimeout(() => fail(new Error('stdio smoke timed out')), 15_000);
+
+          function send(message) {
+            child.stdin.write(`${JSON.stringify(message)}\n`);
+          }
+
+          function stop() {
+            if (child.pid) process.kill(-child.pid, 'SIGTERM');
+          }
+
+          function finish() {
+            clearTimeout(timeout);
+            stop();
+            process.exit(0);
+          }
+
+          function fail(error) {
+            clearTimeout(timeout);
+            stop();
+            console.error(error);
+            process.exit(1);
+          }
+
+          child.on('error', fail);
+          child.stdout.setEncoding('utf8');
+          child.stdout.on('data', (chunk) => {
+            buffer += chunk;
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines.filter(Boolean)) {
+              let message;
+              try {
+                message = JSON.parse(line);
+              } catch {
+                fail(new Error(`non-JSON stdout from stdio server: ${line}`));
+                return;
+              }
+              console.log(JSON.stringify(message));
+              if (message.id === 1) {
+                send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+                send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+              } else if (message.id === 2) {
+                try {
+                  assert.deepEqual(
+                    message.result.tools.map(({ name }) => name),
+                    expected
+                  );
+                  finish();
+                } catch (error) {
+                  fail(error);
+                }
+              }
+            }
+          });
+
+          send({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'initialize',
+            params: {
+              protocolVersion: '2025-06-18',
+              capabilities: {},
+              clientInfo: { name: 'clean-install-ci', version: '1.0.0' },
+            },
+          });
+          NODE

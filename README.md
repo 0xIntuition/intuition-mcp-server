@@ -29,7 +29,7 @@ This repository represents the evolution of our Intuition MCP Server, which we a
 
 ## Get Started
 
-To run the Intuition MCP Server locally, use Node.js 18 or newer and pnpm 10.8.0.
+To run the Intuition MCP Server locally, use Node.js 20 or newer and pnpm 10.8.0.
 
 Clone the Repository:
 Clone the project repository to your local machine:
@@ -79,13 +79,13 @@ The server exposes six tools for searching entities, retrieving account details,
 
 ## Tools
 
-The Intuition MCP Server provides the following tools, each with a specific purpose and input schema. All tools return responses sorted by relevance (e.g., position descending) and include detailed information, such as atom IDs and connections, to ensure comprehensive results.
+The Intuition MCP Server provides the following tools, each with a specific purpose and input schema. Search and social-graph tools return the fields and ordering described in their sections below; `search_account_ids` returns matching account IDs without an explicit result order.
 
 Tools are registered and made available in the `index.ts` file.
 
 ### search_atoms
 
-Description: Searches for entities (accounts, things, people, concepts) by name, description, URL, or ENS domain (e.g., john.eth). Supports synonyms and keyword breakdown for flexible querying.
+Description: Searches for entities (accounts, things, people, concepts) by name, description, URL, or ENS domain (e.g., john.eth). Accepts one or more explicit query strings.
 
 Input Schema:
 
@@ -108,11 +108,11 @@ Example:
 
 Input: `{"queries": ["ethereum", "eth"]}`
 
-Usage: Search for atoms related to Ethereum, returning at least 10 connections sorted by position, with atom IDs and detailed information.
+Usage: Search for atoms related to Ethereum, returning at most 10 atoms ordered by total market cap. Each atom includes its ID and at most 10 subject relationships.
 
 ### get_account_info
 
-Description: Retrieves detailed information about an account using its address or identifier. Falls back to search_atoms if the identifier is not a hex address.
+Description: Retrieves account details using `address` when provided, otherwise `identifier`. Hex values are normalized to lowercase; non-hex identifiers are passed unchanged to the account-ID query. This tool does not fall back to `search_atoms`.
 
 Input Schema:
 
@@ -131,11 +131,11 @@ Example:
 
 Input: `{"identifier": "0x1234567890123456789012345678901234567890"}`
 
-Usage: Fetch account details, including at least 10 connections, sorted by position, with atom IDs.
+Usage: Fetch an account summary with at most 10 relationships and at most 10 financial positions; positions are ordered by share amount.
 
 ### search_lists
 
-Description: Searches for lists of entities (e.g., blockchains, crypto CEOs) by name or description, supporting complex queries broken down into simpler terms.
+Description: Searches for curated lists whose object label contains the supplied query, ordered by claim count descending.
 
 Input Schema:
 
@@ -154,11 +154,11 @@ Example:
 
 Input: `{"query": "defi protocols"}`
 
-Usage: Retrieve a list of DeFi protocols, returning at least 10 items sorted by position, with atom IDs and details.
+Usage: Retrieve at most 10 matching lists with their IDs, labels, triple counts, and object IDs.
 
 ### get_following
 
-Description: Retrieves atom IDs that an account follows, optionally filtered by a predicate (e.g., follow, recommend).
+Description: Retrieves accounts connected from the supplied account by positive-share `follow` relations. The optional `predicate` filters only the nested activities fetched for each followed account; it does not change which followed accounts are returned.
 
 Input Schema:
 
@@ -178,11 +178,11 @@ Example:
 
 Input: `{"account_id": "0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b", "predicate": "recommend"}`
 
-Usage: List atoms recommended by the specified account.
+Usage: List accounts followed by the specified account and include their nested `recommend` activities.
 
 ### get_followers
 
-Description: Retrieves followers of an account, optionally filtered by a predicate (e.g., follow, recommend).
+Description: Retrieves accounts connected to the supplied account by positive-share `follow` relations. The optional `predicate` filters only the nested interests fetched for each follower; it does not change which followers are returned.
 
 Input Schema:
 
@@ -202,11 +202,11 @@ Example:
 
 Input: `{"account_id": "0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b", "predicate": "follow"}`
 
-Usage: List accounts following the specified account.
+Usage: List accounts following the specified account and include nested interests matching the supplied predicate.
 
 ### search_account_ids
 
-Description: Searches for an account address using an identifier, typically an ENS address (e.g., intuitionbilly.eth).
+Description: Searches account labels case-insensitively for the supplied identifier text and returns at most 10 matching account IDs without an explicit result order.
 
 Input Schema:
 
@@ -225,7 +225,7 @@ Example:
 
 Input: `{"identifier": "vitalik.eth"}`
 
-Usage: Resolve the ENS address to its corresponding account address.
+Usage: Find account IDs whose labels contain the supplied ENS name or other identifier text. This is a label search, not canonical ENS resolution.
 
 ## Running a Client
 
@@ -233,11 +233,11 @@ The Intuition MCP Server uses the Model Context Protocol (MCP) SDK for client in
 
 ### Prerequisites
 
-Node.js 18 or newer (the server's declared minimum and the minimum required by the pinned MCP SDK).
+Node.js 20 or newer (the server's declared minimum and the minimum required by the resolved dependency graph).
 
 MCP SDK: Install the @modelcontextprotocol/sdk package.
 
-Access to the server URL (e.g., http://your-mcp-server:port/mcp).
+For network transports, access to the server URL (e.g., http://your-mcp-server:port/mcp).
 
 ## Installation
 
@@ -252,7 +252,7 @@ npm install @modelcontextprotocol/sdk
 ```
 
 Install dependencies:
-The @modelcontextprotocol/sdk package includes the necessary modules for both Streamable HTTP and SSE transports.
+The @modelcontextprotocol/sdk package includes the necessary modules for stdio, Streamable HTTP, and SSE transports.
 
 ### Example Client Setup
 

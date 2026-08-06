@@ -341,7 +341,9 @@ async function runHttpServer() {
       console.log('[Debug] Tool test successful:', {
         hasContent: !!testResult.content,
         contentLength: testResult.content?.length,
-        contentTypes: testResult.content?.map((c) => c.type),
+        contentTypes: testResult.content?.map(
+          (c: CallToolResult['content'][number]) => c.type
+        ),
       });
 
       res.json({

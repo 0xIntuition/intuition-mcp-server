@@ -1,6 +1,6 @@
 # Intuition MCP Server
 
-The Intuition MCP Server is an HTTP stream server designed to interact with the Intuition knowledge graph, enabling users to query and manage data through a set of powerful tools. It provides a robust API for extracting triples, searching for entities (atoms), retrieving account information, and exploring relationships such as followers and following. This README outlines the steps to get started, the available tools, their functionalities, and instructions for running a client using the [Model Context Protocol (MCP) SDK](https://modelcontextprotocol.io).
+The Intuition MCP Server provides stdio, Streamable HTTP, and legacy SSE transports for querying the Intuition knowledge graph. Its tools search for entities (atoms), retrieve account information, and explore relationships such as followers and following. This README outlines the steps to get started, the available tools, their functionalities, and instructions for running a client using the [Model Context Protocol (MCP) SDK](https://modelcontextprotocol.io).
 
 This repository represents the evolution of our Intuition MCP Server, which we are pleased to be open sourcing for our ecosystem. This is built upon the foundation and testing we've done. There are several contributors who helped get to this point, including [francoispqt](https://github.com/francoispqt), [jonathanprozzi](https://github.com/jonathanprozzi), and [simonas-notcat](https://github.com/simonas-notcat).
 
@@ -11,7 +11,6 @@ This repository represents the evolution of our Intuition MCP Server, which we a
   - [Get Started](#get-started)
   - [Overview](#overview)
   - [Tools](#tools)
-    - [extract_triples](#extract_triples)
     - [search_atoms](#search_atoms)
     - [get_account_info](#get_account_info)
     - [search_lists](#search_lists)
@@ -30,7 +29,7 @@ This repository represents the evolution of our Intuition MCP Server, which we a
 
 ## Get Started
 
-To run the Intuition MCP Server locally, follow these steps:
+To run the Intuition MCP Server locally, use Node.js 20 or newer and pnpm 10.8.0.
 
 Clone the Repository:
 Clone the project repository to your local machine:
@@ -47,8 +46,19 @@ Install the required dependencies using pnpm:
 pnpm install
 ```
 
-**Start the Server:**
-Launch the server using the HTTP transport (recommended):
+Build the server:
+
+```bash
+pnpm run build
+```
+
+Start the server with the stdio transport:
+
+```bash
+pnpm run start:stdio
+```
+
+Alternatively, start the server with the Streamable HTTP transport:
 
 ```bash
 pnpm run start:http
@@ -59,49 +69,23 @@ This will start the Intuition MCP Server, making it available at the configured 
 **Verify the Server:**
 Once the server is running, you can test it by sending a request to the `/mcp` endpoint (for Streamable HTTP clients) or `/sse` endpoint (for legacy SSE clients). See the Running a Client (#running-a-client) section for details on connecting a client. We follow the most recent recommendations from the MCP SDK and recommend using the Streamable HTTP endpoint (`/mcp`) over SSE as it is in the process of being deprecated.
 
-**Note**: Ensure you have pnpm installed globally (`npm install -g pnpm`) before running the above commands. If you encounter issues, verify that your Node.js version is 14 or higher.
+The repository's `packageManager` field pins pnpm 10.8.0. Corepack can install and activate that declared version with `corepack enable`.
 
 ## Overview
 
-The Intuition MCP Server is built to facilitate interactions with the Intuition knowledge graph, a decentralized data structure for storing and querying relationships between entities (atoms) such as accounts, concepts, and objects. The server operates as an HTTP stream server, leveraging the Model Context Protocol (MCP) to handle streaming requests and responses, making it ideal for real-time applications and large-scale data queries.
+The Intuition MCP Server is built to facilitate interactions with the Intuition knowledge graph, a decentralized data structure for storing and querying relationships between entities (atoms) such as accounts, concepts, and objects. The server supports stdio, Streamable HTTP, and legacy SSE transports.
 
-The server exposes a set of tools via API endpoints, each designed for specific tasks like extracting structured data (triples), searching for entities, retrieving account details, and exploring social connections (e.g., followers or recommendations). These tools are accessible using the MCP SDK, which supports both modern Streamable HTTP and legacy Server-Sent Events (SSE) transports for client-server communication. While we provide support for SSE, it is in the process of being deprecated in the MCP SDK, so we recommend using the Stremable HTTP endpoint.
+The server exposes six tools for searching entities, retrieving account details, and exploring social connections such as followers or recommendations. These tools are accessible using the MCP SDK. For network clients, prefer the Streamable HTTP endpoint (`/mcp`) over the legacy SSE endpoints.
 
 ## Tools
 
-The Intuition MCP Server provides the following tools, each with a specific purpose and input schema. All tools return responses sorted by relevance (e.g., position descending) and include detailed information, such as atom IDs and connections, to ensure comprehensive results.
+The Intuition MCP Server provides the following tools, each with a specific purpose and input schema. Search and social-graph tools return the fields and ordering described in their sections below; `search_account_ids` returns matching account IDs without an explicit result order.
 
 Tools are registered and made available in the `index.ts` file.
 
-### extract_triples
-
-Description: Extracts triples (subject-predicate-object) from user input text, enabling structured data extraction from natural language.
-
-Input Schema:
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "input": {
-      "type": "string",
-      "description": "Input from the user to extract triples from"
-    }
-  },
-  "required": ["input"],
-  "additionalProperties": false
-}
-```
-
-Example:
-
-Input: `{"input": "Alice knows Bob"}`
-
-Usage: Extract structured triples like (Alice, knows, Bob).
-
 ### search_atoms
 
-Description: Searches for entities (accounts, things, people, concepts) by name, description, URL, or ENS domain (e.g., john.eth). Supports synonyms and keyword breakdown for flexible querying.
+Description: Searches for entities (accounts, things, people, concepts) by name, description, URL, or ENS domain (e.g., john.eth). Accepts one or more explicit query strings.
 
 Input Schema:
 
@@ -124,11 +108,11 @@ Example:
 
 Input: `{"queries": ["ethereum", "eth"]}`
 
-Usage: Search for atoms related to Ethereum, returning at least 10 connections sorted by position, with atom IDs and detailed information.
+Usage: Search for atoms related to Ethereum, returning at most 10 atoms ordered by total market cap. Each atom includes its ID and at most 10 subject relationships.
 
 ### get_account_info
 
-Description: Retrieves detailed information about an account using its address or identifier. Falls back to search_atoms if the identifier is not a hex address.
+Description: Retrieves account details using `address` when provided, otherwise `identifier`. Hex values are normalized to lowercase; non-hex identifiers are passed unchanged to the account-ID query. This tool does not fall back to `search_atoms`.
 
 Input Schema:
 
@@ -147,11 +131,11 @@ Example:
 
 Input: `{"identifier": "0x1234567890123456789012345678901234567890"}`
 
-Usage: Fetch account details, including at least 10 connections, sorted by position, with atom IDs.
+Usage: Fetch an account summary with at most 10 relationships and at most 10 financial positions; positions are ordered by share amount.
 
 ### search_lists
 
-Description: Searches for lists of entities (e.g., blockchains, crypto CEOs) by name or description, supporting complex queries broken down into simpler terms.
+Description: Searches for curated lists whose object label contains the supplied query, ordered by claim count descending.
 
 Input Schema:
 
@@ -170,11 +154,11 @@ Example:
 
 Input: `{"query": "defi protocols"}`
 
-Usage: Retrieve a list of DeFi protocols, returning at least 10 items sorted by position, with atom IDs and details.
+Usage: Retrieve at most 10 matching lists with their IDs, labels, triple counts, and object IDs.
 
 ### get_following
 
-Description: Retrieves atom IDs that an account follows, optionally filtered by a predicate (e.g., follow, recommend).
+Description: Retrieves accounts connected from the supplied account by positive-share `follow` relations. The optional `predicate` filters only the nested activities fetched for each followed account; it does not change which followed accounts are returned.
 
 Input Schema:
 
@@ -194,11 +178,11 @@ Example:
 
 Input: `{"account_id": "0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b", "predicate": "recommend"}`
 
-Usage: List atoms recommended by the specified account.
+Usage: List accounts followed by the specified account and include their nested `recommend` activities.
 
 ### get_followers
 
-Description: Retrieves followers of an account, optionally filtered by a predicate (e.g., follow, recommend).
+Description: Retrieves accounts connected to the supplied account by positive-share `follow` relations. The optional `predicate` filters only the nested interests fetched for each follower; it does not change which followers are returned.
 
 Input Schema:
 
@@ -218,11 +202,11 @@ Example:
 
 Input: `{"account_id": "0x3e2178cf851a0e5cbf84c0ff53f820ad7ead703b", "predicate": "follow"}`
 
-Usage: List accounts following the specified account.
+Usage: List accounts following the specified account and include nested interests matching the supplied predicate.
 
 ### search_account_ids
 
-Description: Searches for an account address using an identifier, typically an ENS address (e.g., intuitionbilly.eth).
+Description: Searches account labels case-insensitively for the supplied identifier text and returns at most 10 matching account IDs without an explicit result order.
 
 Input Schema:
 
@@ -241,7 +225,7 @@ Example:
 
 Input: `{"identifier": "vitalik.eth"}`
 
-Usage: Resolve the ENS address to its corresponding account address.
+Usage: Find account IDs whose labels contain the supplied ENS name or other identifier text. This is a label search, not canonical ENS resolution.
 
 ## Running a Client
 
@@ -249,11 +233,11 @@ The Intuition MCP Server uses the Model Context Protocol (MCP) SDK for client in
 
 ### Prerequisites
 
-Node.js (version 14 or higher).
+Node.js 20 or newer (the server's declared minimum and the minimum required by the resolved dependency graph).
 
 MCP SDK: Install the @modelcontextprotocol/sdk package.
 
-Access to the server URL (e.g., http://your-mcp-server:port/mcp).
+For network transports, access to the server URL (e.g., http://your-mcp-server:port/mcp).
 
 ## Installation
 
@@ -268,88 +252,41 @@ npm install @modelcontextprotocol/sdk
 ```
 
 Install dependencies:
-The @modelcontextprotocol/sdk package includes the necessary modules for both Streamable HTTP and SSE transports.
+The @modelcontextprotocol/sdk package includes the necessary modules for stdio, Streamable HTTP, and SSE transports.
 
 ### Example Client Setup
 
-Below is an example of a Node.js client using the MCP SDK to connect to the Intuition MCP Server and interact with its tools.
+Below is an example of a Node.js client using the MCP SDK to start the built server over stdio, list its tools, and invoke a tool.
 
 ```typescript
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-async function connectToMcpServer(url) {
-  let client;
-  const baseUrl = new URL(url);
+const client = new Client({ name: 'intuition-example', version: '1.0.0' });
+const transport = new StdioClientTransport({
+  command: 'node',
+  args: ['dist/index.js'],
+});
 
-  try {
-    // Attempt to connect using Streamable HTTP transport
-    client = new Client({
-      name: 'streamable-http-client',
-      version: '1.0.0',
-    });
-    const transport = new StreamableHTTPClientTransport(baseUrl);
-    await client.connect(transport);
-    console.log('Connected using Streamable HTTP transport');
-    return client;
-  } catch (error) {
-    console.log(
-      'Streamable HTTP connection failed, falling back to SSE transport:',
-      error.message
-    );
-    // Fallback to SSE transport for legacy compatibility
-    client = new Client({
-      name: 'sse-client',
-      version: '1.0.0',
-    });
-    const sseTransport = new SSEClientTransport(baseUrl);
-    await client.connect(sseTransport);
-    console.log('Connected using SSE transport');
-    return client;
-  }
-}
+await client.connect(transport);
 
-async function callMcpTool(client, toolName, payload) {
-  try {
-    // Send a request to the specified tool
-    const response = await client.callTool(toolName, payload);
+const { tools } = await client.listTools();
+console.log(tools.map(({ name }) => name));
 
-    // Handle streaming response
-    response.on('data', (data) => {
-      console.log('Received data:', data);
-    });
+const result = await client.callTool({
+  name: 'search_atoms',
+  arguments: { queries: ['ethereum', 'eth'] },
+});
+console.log(result);
 
-    response.on('end', () => {
-      console.log('Stream ended');
-    });
-  } catch (error) {
-    console.error('Error calling MCP tool:', error.message);
-  }
-}
-
-// Example usage
-async function main() {
-  const serverUrl = 'http://your-mcp-server'; // Replace with your server URL
-  const client = await connectToMcpServer(serverUrl);
-
-  // Example: Search for atoms related to Ethereum
-  await callMcpTool(client, 'search_atoms', { queries: ['ethereum', 'eth'] });
-
-  // Example: Extract triples
-  await callMcpTool(client, 'extract_triples', { input: 'Alice knows Bob' });
-}
-
-main().catch(console.error);
+await client.close();
 ```
 
 ## Making API Requests
 
 **Initialize the client:**
 
-Create an MCP Client instance and connect it to the server using either `StreamableHTTPClientTransport` or `SSEClientTransport`.
-
-The client automatically handles transport negotiation and fallback to SSE if Streamable HTTP fails.
+Create an MCP `Client` instance and connect it with a transport such as `StdioClientTransport` or `StreamableHTTPClientTransport`.
 
 **Construct the payload:**
 
@@ -359,43 +296,41 @@ Ensure the payload matches the tool’s JSON schema to avoid errors.
 
 **Send the request:**
 
-Use the client.callTool method to invoke a tool with the specified payload.
-
-The client handles the underlying HTTP or SSE communication, including streaming responses.
+Use `client.callTool({ name, arguments })` to invoke a tool.
 
 **Handle the response:**
 
-Responses are streamed and can be processed using event listeners (e.g., response.on('data', ...)).
-
-Parse each chunk as JSON if the response is structured data.
-
-Handle the end event to detect when the stream is complete.
+The returned promise resolves to an MCP call-tool result. Inspect its `content` array and `isError` flag.
 
 **Example Payloads:**
 
 For search_atoms:
 
 ```javascript
-await client.callTool('search_atoms', { queries: ['blockchain'] });
+await client.callTool({
+  name: 'search_atoms',
+  arguments: { queries: ['blockchain'] },
+});
 ```
 
 For get_account_info:
 
 ```javascript
-await client.callTool('get_account_info', {
-  identifier: '0x1234567890123456789012345678901234567890',
+await client.callTool({
+  name: 'get_account_info',
+  arguments: {
+    identifier: '0x1234567890123456789012345678901234567890',
+  },
 });
 ```
 
 ### Notes
 
-**Server URL**: Replace http://your-mcp-server with the actual server address.
+**Server URL**: Network clients should connect to the Streamable HTTP `/mcp` endpoint, such as `http://localhost:3001/mcp` for the default local server.
 
 **Authentication**: If the server requires an API key, configure it in the transport options (consult the MCP SDK documentation for details).
 
-**Error Handling**: The client automatically retries with SSE transport if Streamable HTTP fails (e.g., due to a 4xx error).
-
-**Streaming**: Ensure your application can handle streaming responses, as large datasets are returned incrementally.
+**Error Handling**: Handle connection and tool-call errors from the MCP client methods.
 
 **Legacy Support**: The server supports both Streamable HTTP and SSE transports for backwards compatibility with older clients.
 

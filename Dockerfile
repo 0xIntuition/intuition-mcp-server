@@ -1,4 +1,4 @@
-FROM node:22-alpine@sha256:ce8d97f7cfc7c5386421eb932df20a29df99b1a7f469f6157d5c9956702ffadc
+FROM node:22.23.5-alpine@sha256:d6e6d1cae4ed0cda2dc336db1bbea6457c2b5d2a8bcd9ac1d80b909fe1c4f638
 
 # Install pnpm
 RUN npm install -g pnpm
